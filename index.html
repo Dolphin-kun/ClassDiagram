@@ -41,23 +41,35 @@
   </script>
 </head>
 <body>
-  <textarea id="editor">classDiagram
-    class Animal {
-        +String name
-        +move()
-        +eat()
-    }
+  <div style="width: 50%; height: 100%; padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px;">
+    <input id="classname" type="text" placeholder="クラス名を入力" style="padding: 8px; font-size: 14px; width: 100%;" />
+    <textarea id="fields" placeholder="フィールドやメソッドを1行ずつ記入" style="flex: 1; padding: 8px; font-size: 14px; resize: none;"></textarea>
+    <button onclick="buildMermaid()" style="padding: 10px; font-size: 14px;">Mermaid コード生成</button>
+    <textarea id="editor" style="flex: 1; padding: 16px; font-size: 14px; resize: none;">classDiagram</textarea>
+  </div>
 
-    class Dog {
-        +bark()
-    }
-
-    Animal <|-- Dog
-  </textarea>
-
-  <div id="preview">レンダリング中...</div>
+  <div id="preview" style="width: 50%; height: 100%; overflow: auto; border-left: 2px solid #ddd; padding: 16px; box-sizing: border-box; background: #fafafa;">レンダリング中...</div>
 
   <script>
+    function buildMermaid() {
+      const cn = document.getElementById("classname").value.trim();
+      const lines = document.getElementById("fields").value.split("
+").map(x => x.trim()).filter(x => x);
+
+      let code = "classDiagram
+";
+      if (cn) {
+        code += `    class ${cn} {
+`;
+        for (const l of lines) code += `        ${l}
+`;
+        code += "    }";
+      }
+
+      document.getElementById("editor").value = code;
+      renderDiagram();
+    }
+
     async function renderDiagram() {
       const code = document.getElementById("editor").value;
       try {
