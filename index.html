@@ -3,103 +3,76 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>リアルタイム C# クラス図エディタ（v3）</title>
+  <title>C# クラス図エディタ（完全新規）</title>
   <style>
     body { margin:0; display:flex; height:100vh; font-family:sans-serif; }
-    #left { width:50%; padding:16px; box-sizing:border-box; display:flex; flex-direction:column; gap:8px; }
+    #left { width:50%; padding:16px; display:flex; flex-direction:column; gap:8px; box-sizing:border-box; }
     #editor { flex:1; padding:12px; font-size:14px; resize:none; }
-    #preview { width:50%; padding:16px; border-left:2px solid #ddd; overflow:auto; background:#fafafa; box-sizing:border-box; }
+    #preview { width:50%; padding:16px; border-left:2px solid #ddd; background:#fafafa; overflow:auto; box-sizing:border-box; }
   </style>
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
     mermaid.initialize({ startOnLoad:false });
     window.mermaid = mermaid;
 
-    // ===== C#解析（複数クラス対応） =====
     function parseCSharp(code){
       const classes = [];
       const classRegex = /public\s+class\s+(\w+)/g;
       let match;
+      while((match = classRegex.exec(code))){ classes.push({ name: match[1], props: [], methods: [] }); }
 
-      while ((match = classRegex.exec(code)) !== null) {
-        classes.push({ name: match[1], props: [], methods: [] });
-      }
-
-      for (const cls of classes) {
+      for(const cls of classes){
         const bodyRegex = new RegExp(`class\\s+${cls.name}[^{]*{([\\s\\S]*?)}`);
         const bodyMatch = code.match(bodyRegex);
-        if (!bodyMatch) continue;
+        if(!bodyMatch) continue;
         const body = bodyMatch[1];
 
         const propRegex = /public\s+([\w<>\.]+)\s+(\w+)\s*{\s*get;\s*set;\s*}/g;
         let p;
-        while ((p = propRegex.exec(body)) !== null) {
-          cls.props.push(`+ ${p[1]} ${p[2]}`);
-        }
+        while((p = propRegex.exec(body))){ cls.props.push(`+ ${p[1]} ${p[2]}`); }
 
         const methodRegex = /public\s+([\w<>\.]+)\s+(\w+)\s*\(([^)]*)\)/g;
         let m;
-        while ((m = methodRegex.exec(body)) !== null) {
-          cls.methods.push(`+ ${m[1]} ${m[2]}(${m[3]})`);
-        }
+        while((m = methodRegex.exec(body))){ cls.methods.push(`+ ${m[1]} ${m[2]}(${m[3]})`); }
       }
-
       return classes;
     }
 
-    // ===== Mermaid生成 =====
-    function buildDiagram() {
+    function buildDiagram(){
       const code = document.getElementById("editor").value;
       const classes = parseCSharp(code);
 
-      if (classes.length === 0) {
-        document.getElementById("preview").innerHTML = "<i>クラスが見つかりませんでした。C# の public class を貼り付けてください。</i>";
+      if(classes.length === 0){
+        document.getElementById("preview").innerHTML = "<i>public class が見つかりません。</i>";
         return;
       }
 
-      let md = "classDiagram
-";
-      for (const c of classes) {
-        md += `class ${c.name} {
-`;
-        for (const p of c.props) md += `  ${p}
-`;
-        for (const m of c.methods) md += `  ${m}
-`;
-        md += `}
-`;
+      let md = "classDiagram\n";
+      for(const c of classes){
+        md += `class ${c.name} {\n`;
+        for(const p of c.props) md += `  ${p}\n`;
+        for(const m of c.methods) md += `  ${m}\n`;
+        md += `}\n`;
       }
       render(md);
     }
-    }
 
-    async function render(code) {
-      try {
+    async function render(code){
+      try{
         const { svg } = await mermaid.render("diagram", code);
         document.getElementById("preview").innerHTML = svg;
-      } catch (e) {
-        document.getElementById("preview").innerHTML = `<pre>${e}</pre>`;
-      }
+      }catch(e){ document.getElementById("preview").innerHTML = `<pre>${e}</pre>`; }
     }
 
-    window.onload = () => buildDiagram();
     window.buildDiagram = buildDiagram;
+    window.onload = () => buildDiagram();
   </script>
 </head>
 <body>
   <div id="left">
-    <textarea id="editor" placeholder="ここに C# コードを貼り付けてください
-public class Sample {
-    public int Id { get; set; }
-    public string Name { get; set; }
-    public void DoWork(int x) {}
-}" style="flex:1; font-size:14px;"></textarea>
-
-    <button onclick="buildDiagram()" style="padding:10px; font-size:14px; cursor:pointer;">
-      クラス図を生成
-    </button>
+    <textarea id="editor" placeholder="ここに C# のクラスコードを貼り付けてください" style="flex:1;"></textarea>
+    <button onclick="buildDiagram()" style="padding:10px; cursor:pointer;">クラス図を生成</button>
   </div>
-
   <div id="preview">レンダリング中...</div>
 </body>
 </html>
