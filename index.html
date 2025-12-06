@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>リアルタイム クラス図エディタ</title>
+  <title>リアルタイム クラス図エディタ（修正版）</title>
   <style>
     body {
       margin: 0;
@@ -12,15 +12,20 @@
       height: 100vh;
       overflow: hidden;
     }
-    #editor {
+    #left {
       width: 50%;
       height: 100%;
-      border: none;
       padding: 16px;
-      font-size: 14px;
-      outline: none;
-      resize: none;
       box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #editor {
+      flex: 1;
+      padding: 12px;
+      font-size: 14px;
+      resize: none;
     }
     #preview {
       width: 50%;
@@ -33,44 +38,34 @@
     }
   </style>
 
-  <!-- Mermaid CDN -->
+  <!-- Mermaid を確実に読み込むために module で統一 -->
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
-    mermaid.initialize({ startOnLoad: true });
+    mermaid.initialize({ startOnLoad: false });
     window.mermaid = mermaid;
-  </script>
-</head>
-<body>
-  <div style="width: 50%; height: 100%; padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px;">
-    <input id="classname" type="text" placeholder="クラス名を入力" style="padding: 8px; font-size: 14px; width: 100%;" />
-    <textarea id="fields" placeholder="フィールドやメソッドを1行ずつ記入" style="flex: 1; padding: 8px; font-size: 14px; resize: none;"></textarea>
-    <button onclick="buildMermaid()" style="padding: 10px; font-size: 14px;">Mermaid コード生成</button>
-    <textarea id="editor" style="flex: 1; padding: 16px; font-size: 14px; resize: none;">classDiagram</textarea>
-  </div>
 
-  <div id="preview" style="width: 50%; height: 100%; overflow: auto; border-left: 2px solid #ddd; padding: 16px; box-sizing: border-box; background: #fafafa;">レンダリング中...</div>
-
-  <script>
-    function buildMermaid() {
+    // ===== クラス図生成ロジック =====
+    window.buildMermaid = function () {
       const cn = document.getElementById("classname").value.trim();
-      const lines = document.getElementById("fields").value.split("
-").map(x => x.trim()).filter(x => x);
+      const lines = document.getElementById("fields").value
+        .split("\n")
+        .map(x => x.trim())
+        .filter(x => x);
 
-      let code = "classDiagram
-";
+      let code = "classDiagram\n";
+
       if (cn) {
-        code += `    class ${cn} {
-`;
-        for (const l of lines) code += `        ${l}
-`;
-        code += "    }";
+        code += `  class ${cn} {\n`;
+        for (const l of lines) code += `    ${l}\n`;
+        code += "  }";
       }
 
       document.getElementById("editor").value = code;
-      renderDiagram();
-    }
+      window.renderDiagram();
+    };
 
-    async function renderDiagram() {
+    // ===== Mermaid レンダリング =====
+    window.renderDiagram = async function () {
       const code = document.getElementById("editor").value;
       try {
         const { svg } = await window.mermaid.render("diagram", code);
@@ -78,10 +73,28 @@
       } catch (e) {
         document.getElementById("preview").innerHTML = `<pre>${e}</pre>`;
       }
-    }
+    };
 
-    document.getElementById("editor").addEventListener("input", renderDiagram);
-    window.onload = renderDiagram;
+    window.onload = () => {
+      window.renderDiagram();
+    };
   </script>
+</head>
+<body>
+  <div id="left">
+    <input id="classname" type="text" placeholder="クラス名を入力 (例: Person)" style="padding: 8px; font-size: 14px;" />
+
+    <textarea
+      id="fields"
+      placeholder="フィールドやメソッドを1行ずつ記入\n例:\n+String name\n+int age\n+void walk()"
+      style="height: 150px; padding: 8px; font-size: 14px; resize: none;"
+    ></textarea>
+
+    <button onclick="buildMermaid()" style="padding: 10px; font-size: 14px; cursor: pointer;">→ Mermaid コードを生成</button>
+
+    <textarea id="editor" style="padding: 12px; font-size: 14px; resize: none;">classDiagram</textarea>
+  </div>
+
+  <div id="preview">レンダリング中...</div>
 </body>
 </html>
