@@ -47,15 +47,19 @@
         return;
       }
 
-      let md = "classDiagram\n";
+      let md = "classDiagram
+";
       for(const c of classes){
-        md += `class ${c.name} {` + "\n";
-        for(const p of c.props) md += `  ${p}` + "\n";
-        for(const m of c.methods) md += `  ${m}` + "\n";
-        md += `}` + "\n";
+        md += `class ${c.name} {` + "
+";
+        for(const p of c.props) md += `  ${p}` + "
+";
+        for(const m of c.methods) md += `  ${m}` + "
+";
+        md += `}` + "
+";
       }
       render(md);
-    }
 
     async function render(code){
       try{
