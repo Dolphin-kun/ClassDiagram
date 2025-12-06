@@ -52,16 +52,25 @@
       const code = document.getElementById("editor").value;
       const classes = parseCSharp(code);
 
-      let md = "classDiagram\n";
-
-      for (const c of classes) {
-        md += `class ${c.name} {\n`;
-        for (const p of c.props) md += `  ${p}\n`;
-        for (const m of c.methods) md += `  ${m}\n`;
-        md += `}\n`;
+      if (classes.length === 0) {
+        document.getElementById("preview").innerHTML = "<i>クラスが見つかりませんでした。C# の public class を貼り付けてください。</i>";
+        return;
       }
 
+      let md = "classDiagram
+";
+      for (const c of classes) {
+        md += `class ${c.name} {
+`;
+        for (const p of c.props) md += `  ${p}
+`;
+        for (const m of c.methods) md += `  ${m}
+`;
+        md += `}
+`;
+      }
       render(md);
+    }
     }
 
     async function render(code) {
