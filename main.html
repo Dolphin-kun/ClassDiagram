@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>リアルタイム クラス図エディタ</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #editor {
+      width: 50%;
+      height: 100%;
+      border: none;
+      padding: 16px;
+      font-size: 14px;
+      outline: none;
+      resize: none;
+      box-sizing: border-box;
+    }
+    #preview {
+      width: 50%;
+      height: 100%;
+      overflow: auto;
+      border-left: 2px solid #ddd;
+      padding: 16px;
+      box-sizing: border-box;
+      background: #fafafa;
+    }
+  </style>
+
+  <!-- Mermaid CDN -->
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true });
+    window.mermaid = mermaid;
+  </script>
+</head>
+<body>
+  <textarea id="editor">classDiagram
+    class Animal {
+        +String name
+        +move()
+        +eat()
+    }
+
+    class Dog {
+        +bark()
+    }
+
+    Animal <|-- Dog
+  </textarea>
+
+  <div id="preview">レンダリング中...</div>
+
+  <script>
+    async function renderDiagram() {
+      const code = document.getElementById("editor").value;
+      try {
+        const { svg } = await window.mermaid.render("diagram", code);
+        document.getElementById("preview").innerHTML = svg;
+      } catch (e) {
+        document.getElementById("preview").innerHTML = `<pre>${e}</pre>`;
+      }
+    }
+
+    document.getElementById("editor").addEventListener("input", renderDiagram);
+    window.onload = renderDiagram;
+  </script>
+</body>
+</html>
