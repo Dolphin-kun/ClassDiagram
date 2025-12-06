@@ -48,15 +48,19 @@
     window.buildMermaid = function () {
       const cn = document.getElementById("classname").value.trim();
       const lines = document.getElementById("fields").value
-        .split("\n")
+        .split("
+")
         .map(x => x.trim())
         .filter(x => x);
 
-      let code = "classDiagram\n";
+      let code = "classDiagram
+";
 
       if (cn) {
-        code += `  class ${cn} {\n`;
-        for (const l of lines) code += `    ${l}\n`;
+        code += `  class ${cn} {
+`;
+        for (const l of lines) code += `    ${l}
+`;
         code += "  }";
       }
 
@@ -86,7 +90,11 @@
 
     <textarea
       id="fields"
-      placeholder="フィールドやメソッドを1行ずつ記入\n例:\n+String name\n+int age\n+void walk()"
+      placeholder="フィールドやメソッドを1行ずつ記入
+例:
++String name
++int age
++void walk()"
       style="height: 150px; padding: 8px; font-size: 14px; resize: none;"
     ></textarea>
 
