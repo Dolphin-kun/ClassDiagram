@@ -3,42 +3,60 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>C# Repo → Mermaid Visualizer</title>
+  <title>C# Repo → Mermaid Visualizer (Zoomable)</title>
+  
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
-    mermaid.initialize({ startOnLoad: false, maxTextSize: 900000 }); // 大規模な図用に上限緩和
+    mermaid.initialize({ startOnLoad: false, maxTextSize: 900000 });
     window.mermaid = mermaid;
   </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+
   <style>
-    body { font-family: "Segoe UI", sans-serif; padding: 20px; background: #f4f6f8; color: #333; max-width: 1200px; margin: 0 auto; }
+    body { font-family: "Segoe UI", sans-serif; padding: 20px; background: #f4f6f8; color: #333; max-width: 1200px; margin: 0 auto; height: 100vh; display: flex; flex-direction: column; }
     
     /* GitHub Inputs */
-    .gh-panel { background: #24292e; color: white; padding: 15px; border-radius: 6px; margin-bottom: 20px; }
+    .gh-panel { background: #24292e; color: white; padding: 15px; border-radius: 6px; margin-bottom: 20px; flex-shrink: 0; }
     .gh-inputs { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
     .gh-input { flex: 1; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #fafafa; min-width: 200px; }
     .btn-gh { background: #2ea44f; color: white; border: none; padding: 8px 16px; border-radius: 4px; font-weight: bold; cursor: pointer; }
     .btn-gh:hover { background: #2c974b; }
     .gh-note { font-size: 0.8rem; color: #ccc; }
 
-    textarea { width: 100%; height: 80px; padding: 10px; font-family: Consolas, monospace; border-radius: 6px; border: 1px solid #ccc; }
+    textarea { width: 100%; height: 80px; padding: 10px; font-family: Consolas, monospace; border-radius: 6px; border: 1px solid #ccc; flex-shrink: 0; }
     
-    .controls { margin: 10px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .controls { margin: 10px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; flex-shrink: 0; }
     
-    /* Buttons */
     button { padding: 8px 16px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; transition: background 0.2s; color: white; }
     .btn-add { background: #007bff; } .btn-add:hover { background: #0056b3; }
     .btn-save { background: #28a745; } .btn-save:hover { background: #218838; }
     .btn-reset { background: #dc3545; } .btn-reset:hover { background: #c82333; }
 
     .status-msg { font-size: 0.9rem; font-weight: bold; margin-left: 10px; }
-    .status-success { color: #28a745; }
-    .status-loading { color: #e6a700; }
-    .status-error { color: #dc3545; }
+    .status-success { color: #28a745; } .status-loading { color: #e6a700; } .status-error { color: #dc3545; }
     
     .legend { font-size: 0.85rem; margin-left: auto; color: #555; display: flex; gap: 10px; }
     .legend span { display: flex; align-items: center; gap: 4px; }
     
-    #diagramContainer { background: #fff; padding: 20px; border-radius: 8px; min-height: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); overflow: auto; position: relative; }
+    /* Diagram Container - ズーム用にスタイル変更 */
+    #diagramContainer { 
+      background: #fff; 
+      border-radius: 8px; 
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1); 
+      /* 固定高さを設定し、はみ出しを隠す（ライブラリが動かすため） */
+      flex-grow: 1; 
+      min-height: 400px; 
+      overflow: hidden; 
+      position: relative;
+      border: 1px solid #ddd;
+    }
+    
+    /* SVG自体をコンテナいっぱいに */
+    #diagramContainer svg {
+      width: 100%;
+      height: 100%;
+    }
   </style>
 </head>
 <body>
@@ -53,14 +71,12 @@
       <button onclick="fetchFromGitHub()" class="btn-gh">🚀 リポジトリ読込</button>
     </div>
     <div class="gh-note">
-      ※ トークンなしだと1時間60回制限です。Privateリポジトリや大規模な読込にはトークンが必要です。<br>
-      ※ 読み込み対象はメインブランチのすべての .cs ファイルです。
+      ※ トークンなし: 60回/時制限。Privateリポジトリはトークン必須。
     </div>
     <div id="ghStatus" class="status-msg"></div>
   </div>
 
-  <p>手動追加エリア</p>
-  <textarea id="codeInput" placeholder="// C#コードを貼り付け"></textarea>
+  <textarea id="codeInput" placeholder="// C#コードを手動で追加する場合はここに貼り付け"></textarea>
   
   <div class="controls">
     <button onclick="addCode()" class="btn-add">解析して追加</button>
@@ -69,9 +85,8 @@
     <span id="saveStatus" class="status-msg status-success" style="display:none">保存しました！</span>
     
     <div class="legend">
-      <span><b>━━▷</b> new/return (実線)</span>
-      <span><b>- - ▷</b> use (点線)</span>
-      <span><b>──▷</b> 継承</span>
+      <span><b>マウスドラッグ:</b> 移動</span>
+      <span><b>Ctrl + ホイール:</b> 拡大縮小</span>
     </div>
   </div>
 
@@ -81,6 +96,7 @@
   import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
 
   let fullSourceCode = "";
+  let panZoomInstance = null; // ズームライブラリのインスタンス保持用
 
   window.addEventListener('load', async () => {
     const savedCode = localStorage.getItem('mermaid_csharp_viz');
@@ -90,7 +106,6 @@
     }
   });
 
-  // --- GitHub Fetch Logic ---
   window.fetchFromGitHub = async function() {
     const urlInput = document.getElementById('repoUrl').value.trim();
     const token = document.getElementById('ghToken').value.trim();
@@ -102,9 +117,8 @@
       return;
     }
 
-    // URLパース (user/repo を抽出)
     const match = urlInput.match(/github\.com\/([^\/]+\/[^\/]+)/);
-    const repoPath = match ? match[1] : urlInput; // そのまま user/repo と入力された場合も対応
+    const repoPath = match ? match[1] : urlInput;
 
     statusEl.textContent = "リポジトリ情報を取得中...";
     statusEl.className = "status-msg status-loading";
@@ -113,47 +127,34 @@
     if (token) headers['Authorization'] = `token ${token}`;
 
     try {
-      // 1. デフォルトブランチを取得
       const repoRes = await fetch(`https://api.github.com/repos/${repoPath}`, { headers });
       if (!repoRes.ok) throw new Error("リポジトリが見つかりません: " + repoRes.statusText);
       const repoData = await repoRes.json();
       const defaultBranch = repoData.default_branch;
 
-      // 2. ツリーを再帰的に取得 (全ファイルパス取得)
       statusEl.textContent = `ファイルリストを取得中 (${defaultBranch})...`;
       const treeRes = await fetch(`https://api.github.com/repos/${repoPath}/git/trees/${defaultBranch}?recursive=1`, { headers });
       if (!treeRes.ok) throw new Error("ファイルリスト取得失敗: " + treeRes.statusText);
       const treeData = await treeRes.json();
 
-      // 3. .csファイルのみフィルタリング
       const csFiles = treeData.tree.filter(node => node.path.endsWith('.cs') && node.type === 'blob');
       
-      if (csFiles.length === 0) {
-        throw new Error(".csファイルが見つかりませんでした。");
-      }
-      if (csFiles.length > 50 && !confirm(`${csFiles.length}個のファイルが見つかりました。すべて読み込みますか？(API制限に注意)`)) {
+      if (csFiles.length === 0) throw new Error(".csファイルが見つかりませんでした。");
+      if (csFiles.length > 50 && !confirm(`${csFiles.length}個のファイルが見つかりました。読み込みますか？`)) {
         statusEl.textContent = "キャンセルされました";
-        statusEl.className = "status-msg status-error";
         return;
       }
 
-      // 4. 並列でファイルの中身を取得
       statusEl.textContent = `${csFiles.length}個のファイルをダウンロード中...`;
       
       let fetchedCount = 0;
       const fetchPromises = csFiles.map(async file => {
-        // raw_urlがあればそれを使う、なければAPI経由(Base64デコード必要だが、ここではraw.githubusercontentを使うのが手っ取り早い)
-        // Privateリポジトリの場合はAPI経由でcontentを取得する必要があります
         let content = "";
-        
         if (token) {
-            // Private対応: APIでBlobを取得
             const blobRes = await fetch(file.url, { headers });
             const blobData = await blobRes.json();
-            // Base64デコード (日本語文字化け対策)
             content = decodeURIComponent(escape(window.atob(blobData.content.replace(/\s/g, ''))));
         } else {
-            // PublicかつTokenなし: raw.githubusercontent.com
             const rawUrl = `https://raw.githubusercontent.com/${repoPath}/${defaultBranch}/${file.path}`;
             const res = await fetch(rawUrl);
             content = await res.text();
@@ -164,8 +165,6 @@
       });
 
       const contents = await Promise.all(fetchPromises);
-      
-      // 既存コードに追加
       fullSourceCode += "\n" + contents.join("\n");
       
       statusEl.textContent = "解析中...";
@@ -180,8 +179,6 @@
       statusEl.className = "status-msg status-error";
     }
   };
-
-  // --- Existing Logic (Same as before) ---
 
   window.addCode = async function() {
     const input = document.getElementById('codeInput');
@@ -199,11 +196,15 @@
   };
 
   window.resetAll = async function() {
-    if(!confirm("現在の図と保存データをすべて消去しますか？")) return;
+    if(!confirm("リセットしますか？")) return;
     fullSourceCode = "";
     localStorage.removeItem('mermaid_csharp_viz');
     document.getElementById('diagramContainer').innerHTML = "";
     document.getElementById('ghStatus').textContent = "";
+    if(panZoomInstance) {
+        panZoomInstance.destroy();
+        panZoomInstance = null;
+    }
   };
 
   async function analyzeAndRender(source) {
@@ -216,7 +217,6 @@
     }
 
     let mermaidDef = "classDiagram\n";
-    // Mermaidのディレクティブを追加してレンダリング調整
     mermaidDef += "%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '12px'}}}%%\n";
 
     classes.forEach(cls => {
@@ -305,6 +305,7 @@
     await renderMermaid(mermaidDef);
   }
 
+  // --- ユーティリティ系関数 ---
   function addRel(map, target, type, label) {
     if (!map.has(target)) map.set(target, { solid: new Set(), dashed: new Set() });
     map.get(target)[type].add(label);
@@ -360,13 +361,50 @@
     return str.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1');
   }
 
+  // --- レンダリング & Zoom適用 ---
   async function renderMermaid(def) {
     const container = document.getElementById('diagramContainer');
+    
+    // 古いpanZoomインスタンスがあれば破棄
+    if (panZoomInstance) {
+        panZoomInstance.destroy();
+        panZoomInstance = null;
+    }
+
     container.innerHTML = `<pre class="mermaid" id="mermaidTarget">${def}</pre>`;
-    try { await mermaid.run({ nodes: [document.querySelector('#mermaidTarget')] }); } 
-    catch(e) { 
+    
+    try { 
+        // 1. MermaidでSVG生成
+        await mermaid.run({ nodes: [document.querySelector('#mermaidTarget')] }); 
+        
+        // 2. 生成されたSVGを取得
+        const svgElement = container.querySelector('svg');
+        if(svgElement) {
+            // Mermaidが設定したインラインスタイル(max-width等)が邪魔する場合があるのでリセット
+            svgElement.style.maxWidth = "none";
+            svgElement.style.height = "100%";
+            svgElement.style.width = "100%";
+
+            // 3. svg-pan-zoom を適用
+            panZoomInstance = svgPanZoom(svgElement, {
+                zoomEnabled: true,
+                controlIconsEnabled: true, // 右下に + - ボタンを表示
+                fit: true,
+                center: true,
+                minZoom: 0.1,
+                maxZoom: 10,
+                // Ctrlキーが押されているときだけズームする設定
+                beforeWheel: function(e) {
+                    // Ctrlキーが押されていない場合、ズームをキャンセル（何もしない or 通常スクロール）
+                    // ここでは false を返すとズームイベントがキャンセルされる
+                    return e.ctrlKey;
+                }
+            });
+        }
+
+    } catch(e) { 
       console.error(e);
-      container.innerHTML = `<p style="color:red">Syntax Error or Too Complex</p><textarea style="width:100%;height:300px;">${def}</textarea>`;
+      container.innerHTML = `<p style="color:red">Syntax Error</p><textarea style="width:100%;height:300px;">${def}</textarea>`;
     }
   }
 </script>
