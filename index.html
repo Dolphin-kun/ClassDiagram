@@ -321,16 +321,24 @@
   function formatArgs(raw) { return escapeGenerics(raw, true); }
 
   function escapeGenerics(str, isArgList = false) {
-    let res = "", depth = 0;
-    for (let i = 0; i < str.length; i++) {
-      const c = str[i];
-      if (c === '<') { depth++; res += '~'; }
-      else if (c === '>') { depth--; res += '~'; }
-      else if (c === ',') { res += (depth > 0 ? '，' : (isArgList ? ' ' : ' ')); }
-      else res += c;
+  let res = "", depth = 0;
+  for (let i = 0; i < str.length; i++) {
+    const c = str[i];
+    if (c === '<') {
+      depth++; 
+      res += '~';
     }
-    return res;
+    else if (c === '>') {
+      depth--;
+      res += '~';
+    }
+    else if (c === ',') {
+      res += (depth > 0 ? '，' : (isArgList ? ',' : ' '));
+    }
+    else res += c;
   }
+  return res;
+}
 
   function removeComments(str) {
     return str.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1');
