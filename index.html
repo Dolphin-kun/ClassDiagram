@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>C# → Mermaid Viz (Final Fix)</title>
+  <title>C# → Mermaid Viz (No Subgraph)</title>
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
     mermaid.initialize({ startOnLoad: false });
@@ -23,8 +23,8 @@
 </head>
 <body>
 
-  <h1>C# → Mermaid Visualizer (決定版)</h1>
-  <p>Namespace解析バグを修正し、クラス内にメンバーを格納する形式で出力します。</p>
+  <h1>C# → Mermaid Visualizer (No Subgraph)</h1>
+  <p>Namespaceの枠を使わず、シンプルにクラス図を描画します。</p>
   
   <textarea id="codeInput" placeholder="// C#コードを貼り付け"></textarea>
   
@@ -43,7 +43,7 @@
   let fullSourceCode = "";
 
   window.addEventListener('load', async () => {
-    const savedCode = localStorage.getItem('mermaid_csharp_viz_final');
+    const savedCode = localStorage.getItem('mermaid_csharp_viz_nosub');
     if (savedCode) {
       fullSourceCode = savedCode;
       await analyzeAndRender(fullSourceCode);
@@ -59,7 +59,7 @@
   };
 
   window.saveToStorage = function() {
-    localStorage.setItem('mermaid_csharp_viz_final', fullSourceCode);
+    localStorage.setItem('mermaid_csharp_viz_nosub', fullSourceCode);
     const msg = document.getElementById('statusMsg');
     msg.style.display = 'inline';
     setTimeout(() => { msg.style.display = 'none'; }, 2000);
@@ -68,172 +68,124 @@
   window.resetAll = async function() {
     if(!confirm("リセットしますか？")) return;
     fullSourceCode = "";
-    localStorage.removeItem('mermaid_csharp_viz_final');
+    localStorage.removeItem('mermaid_csharp_viz_nosub');
     document.getElementById('diagramContainer').innerHTML = "";
   };
 
   async function analyzeAndRender(source) {
     let cleanSource = removeComments(source);
     
-    // データ構造: { namespace, className, members: [], relations: [], style: "", parent: "" }
-    const parsedClasses = [];
-    const processedClassNames = new Set();
-    
-    // Namespaceマップ
+    // Namespace解析用の変数
     const namespaceBlocks = new Map();
     namespaceBlocks.set("Global", []);
+    
+    const nsRegex = /namespace\s+([\w\.]+)/g;
+    let match;
+    
+    // 1. Namespace抽出 (コードの切り出し)
+    while ((match = nsRegex.exec(cleanSource)) !== null) {
+      const nsName = match[1];
+      const openBraceIndex = cleanSource.indexOf("{", match.index);
+      const semiColonIndex = cleanSource.indexOf(";", match.index);
 
-    // 1. Namespace抽出 (バグ修正済み)
-    let cursor = 0;
-    while (cursor < cleanSource.length) {
-      const nsIndex = cleanSource.indexOf("namespace ", cursor);
-      if (nsIndex === -1) break;
-
-      const openBraceIndex = cleanSource.indexOf("{", nsIndex);
-      const semiColonIndex = cleanSource.indexOf(";", nsIndex);
-      
-      // ファイルスコープ判定
-      if (semiColonIndex !== -1 && (openBraceIndex === -1 || semiColonIndex < openBraceIndex)) {
-         cursor = semiColonIndex + 1; 
-         continue; 
+      if (openBraceIndex === -1 || (semiColonIndex !== -1 && semiColonIndex < openBraceIndex)) {
+        continue;
       }
 
-      if (openBraceIndex !== -1) {
-        const nsName = cleanSource.substring(nsIndex + 10, openBraceIndex).trim();
+      const blockEnd = findBlockEnd(cleanSource, openBraceIndex);
+      if (blockEnd !== -1) {
+        const body = cleanSource.substring(openBraceIndex + 1, blockEnd);
+        if (!namespaceBlocks.has(nsName)) namespaceBlocks.set(nsName, []);
+        namespaceBlocks.get(nsName).push(body);
         
-        // 【重要】前回バグ修正箇所: openBraceIndexをそのまま渡す
-        const blockEnd = findBlockEnd(cleanSource, openBraceIndex);
+        // 抽出した部分を空白置換
+        const padding = " ".repeat(blockEnd - match.index + 1);
+        cleanSource = cleanSource.substring(0, match.index) + padding + cleanSource.substring(blockEnd + 1);
         
-        if (blockEnd !== -1) {
-           // { の次から } の前まで
-           const body = cleanSource.substring(openBraceIndex + 1, blockEnd);
-           if (!namespaceBlocks.has(nsName)) namespaceBlocks.set(nsName, []);
-           namespaceBlocks.get(nsName).push(body);
-
-           // 抽出部分を空白置換
-           const blockStart = nsIndex;
-           const padding = " ".repeat(blockEnd - blockStart + 1);
-           cleanSource = cleanSource.substring(0, blockStart) + padding + cleanSource.substring(blockEnd + 1);
-           cursor = blockEnd + 1;
-        } else {
-           cursor = openBraceIndex + 1;
-        }
-      } else {
-        cursor = nsIndex + 9;
+        nsRegex.lastIndex = blockEnd + 1;
       }
     }
+    // 残りをGlobalへ
     namespaceBlocks.get("Global").push(cleanSource);
 
+
     // 2. クラス解析
+    const parsedClasses = [];
+    const processedClassNames = new Set();
+
     for (const [nsName, blocks] of namespaceBlocks) {
       blocks.forEach(code => {
         const classRegex = /public\s+(?:static\s+)?class\s+(\w+)(?:\s*:\s*([\w, ]+))?/g;
-        let match;
-        while ((match = classRegex.exec(code)) !== null) {
-          const className = match[1];
-          if (processedClassNames.has(className)) continue;
+        let cMatch;
+        while ((cMatch = classRegex.exec(code)) !== null) {
+          const className = cMatch[1];
+          if (processedClassNames.has(className)) continue; 
           processedClassNames.add(className);
 
-          const inheritanceRaw = match[2];
-          const classBodyBlock = extractBlock(code, match.index + match[0].length);
+          const inheritanceRaw = cMatch[2];
+          const classBodyBlock = extractBlock(code, cMatch.index + cMatch[0].length);
           
           const classData = {
-            namespace: nsName,
             className: className,
             members: [],
-            relations: [], // { target, type, label }
-            parent: null
+            relations: [],
+            parent: null,
+            style: ""
           };
 
-          // スタイル決定
           if (className.match(/Manager|Controller|Service/)) classData.style = "fill:#e3f2fd,stroke:#1565c0,stroke-width:2px";
           else if (className.match(/Config|Data|Model|Body|World/)) classData.style = "fill:#fff9c4,stroke:#fbc02d,stroke-width:2px";
 
-          // 継承
           if (inheritanceRaw) {
-            // 最初の1つだけ親として扱う（多重継承不可のC#前提）
             classData.parent = inheritanceRaw.split(',')[0].trim().split('<')[0];
           }
 
-          // メンバー解析
           if (classBodyBlock) {
              parseMembers(classBodyBlock, classData);
           }
-          
           parsedClasses.push(classData);
         }
       });
     }
 
-    // 3. リレーション解析 (全クラス収集後に実施)
-    // ※今回は parseMembers 内でテキストベースで依存を抽出済みとするが、
-    // 正確な重複排除のためにはクラス名セットが必要。
-    // parseMembers関数内で processedClassNames を参照できないため、ここでフィルタリングする手もあるが
-    // 簡易化のため parseMembers で抽出した候補を有効なクラスのみに絞る。
-
-    // 4. Mermaid生成
+    // 3. Mermaid生成
     let def = "classDiagram\n";
 
-    // Namespaceごとのグループ化
-    const nsGroups = new Map();
+    // クラス定義（subgraphを使わずフラットに出力）
     parsedClasses.forEach(c => {
-      if (!nsGroups.has(c.namespace)) nsGroups.set(c.namespace, []);
-      nsGroups.get(c.namespace).push(c);
+      def += `  class ${c.className} {\n`;
+      c.members.forEach(m => def += `    ${m}\n`);
+      def += `  }\n`;
+      if (c.style) def += `  style ${c.className} ${c.style}\n`;
     });
 
-    for (const [ns, classes] of nsGroups) {
-      const isSub = (ns !== "Global");
-      if (isSub) {
-        def += `  subgraph "${ns}"\n    direction TB\n`;
-      }
-      
-      classes.forEach(c => {
-        // クラス定義開始 (ブラケット記法)
-        def += `    class ${c.className} {\n`;
-        c.members.forEach(m => {
-          def += `      ${m}\n`;
-        });
-        def += `    }\n`;
-        if (c.style) def += `    style ${c.className} ${c.style}\n`;
-      });
-
-      if (isSub) def += `  end\n`;
-    }
-
-    // 関係性の描画 (subgraphの外に書く)
+    // リレーション描画
     parsedClasses.forEach(c => {
       // 継承
       if (c.parent && processedClassNames.has(c.parent)) {
         def += `  ${c.parent} <|-- ${c.className}\n`;
       }
 
-      // 依存関係の整理
-      // Map<Target, { new: [], use: [], return: [] }>
-      const relMap = new Map();
+      // 依存関係整理
+      const relMap = new Map(); 
       c.relations.forEach(r => {
-        if (!processedClassNames.has(r.target) || r.target === c.className) return;
+        if (r.target === c.className || !processedClassNames.has(r.target)) return;
         if (!relMap.has(r.target)) relMap.set(r.target, { new: new Set(), use: new Set(), return: new Set() });
         relMap.get(r.target)[r.type].add(r.label);
       });
 
       relMap.forEach((types, target) => {
-        // 重複除去
         types.new.forEach(l => { types.return.delete(l); types.use.delete(l); });
-        
-        // new (実線)
+        types.return.forEach(l => { types.use.delete(l); });
+
         if (types.new.size > 0) {
            def += `  ${c.className} --> ${target} : new ${Array.from(types.new).join(', ')}\n`;
         }
-        // return
         if (types.return.size > 0) {
-           // メソッド名リストを表示
            def += `  ${c.className} --> ${target} : ${Array.from(types.return).join(', ')}\n`;
         }
-        // use (点線)
-        const uses = [];
-        types.use.forEach(l => uses.push(l));
-        if (uses.length > 0) {
-           def += `  ${c.className} ..> ${target} : ${uses.join(', ')}\n`;
+        if (types.use.size > 0) {
+           def += `  ${c.className} ..> ${target} : ${Array.from(types.use).join(', ')}\n`;
         }
       });
     });
@@ -242,7 +194,6 @@
   }
 
   // --- 解析ロジック ---
-
   function parseMembers(body, classData) {
     // プロパティ
     const pRegex = /public\s+(?:static\s+)?(?:readonly\s+)?([\w<>, \?\[\]]+)\s+(\w+)\s*(?:\{|=>)/g;
@@ -261,41 +212,25 @@
       const args = formatArgs(mm[3]);
       classData.members.push(`+${mName}(${args}) ${retType}`);
 
-      // 戻り値依存
       const rawRet = mm[1].split('<')[0].trim().replace('[]','');
       classData.relations.push({ target: rawRet, type: 'return', label: mName });
 
-      // 内部依存解析
       const endIdx = mm.index + mm[0].length;
       const mBody = extractBlock(body, endIdx);
       if (mBody) {
-        // 簡易的に全単語をスキャンして依存を探すのは重いので、
-        // ここでは「既知のクラス」リストがないため、
-        // 「大文字始まりの単語」をターゲット候補として抽出する戦略もあるが、
-        // 精度のため Regex で new/static パターンを探す
-        
-        // new ClassName
         const newMatches = [...mBody.matchAll(/new\s+(\w+)\s*\(/g)];
         newMatches.forEach(m => classData.relations.push({ target: m[1], type: 'new', label: mName }));
 
-        // Static: ClassName.Method
         const statMatches = [...mBody.matchAll(/(\w+)\s*\.\w+/g)];
         statMatches.forEach(m => {
-           if(m[1] !== "Math" && m[1] !== "Debug" && m[1] !== "Console") // 除外例
+           if(!["Math","Debug","Console","MathF","Vector2","Size","List","Dictionary"].includes(m[1])) 
              classData.relations.push({ target: m[1], type: 'use', label: `call ${mName}` });
         });
-        
-        // Use: 変数宣言や引数など (簡易)
-        // ここは全クラスリストがないと誤爆が多いので、
-        // レンダリング時(processedClassNames判定時)に弾かれることを前提に
-        // new/static以外の型っぽいものを拾うのは難しい。
-        // なので、今回は「new」と「static call」を確実に拾う方針にする。
       }
     }
   }
 
   // --- ヘルパー ---
-
   function findBlockEnd(text, openIndex) {
     let depth = 1;
     let i = openIndex + 1;
@@ -321,24 +256,16 @@
   function formatArgs(raw) { return escapeGenerics(raw, true); }
 
   function escapeGenerics(str, isArgList = false) {
-  let res = "", depth = 0;
-  for (let i = 0; i < str.length; i++) {
-    const c = str[i];
-    if (c === '<') {
-      depth++; 
-      res += '~';
+    let res = "", depth = 0;
+    for (let i = 0; i < str.length; i++) {
+      const c = str[i];
+      if (c === '<') { depth++; res += '~'; }
+      else if (c === '>') { depth--; res += '~'; }
+      else if (c === ',') { res += (depth > 0 ? '，' : (isArgList ? ' ' : ' ')); }
+      else res += c;
     }
-    else if (c === '>') {
-      depth--;
-      res += '~';
-    }
-    else if (c === ',') {
-      res += (depth > 0 ? '，' : (isArgList ? ',' : ' '));
-    }
-    else res += c;
+    return res;
   }
-  return res;
-}
 
   function removeComments(str) {
     return str.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1');
