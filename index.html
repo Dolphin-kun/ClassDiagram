@@ -3,54 +3,98 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>C# Repo → Mermaid Visualizer (Zoom & PNG)</title>
+  <title>C# Repo → Mermaid Visualizer</title>
   
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
     mermaid.initialize({ startOnLoad: false, maxTextSize: 900000 });
     window.mermaid = mermaid;
   </script>
-
   <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
 
   <style>
-    body { font-family: "Segoe UI", sans-serif; padding: 20px; background: #f4f6f8; color: #333; max-width: 1200px; margin: 0 auto; height: 100vh; display: flex; flex-direction: column; }
-    
-    .gh-panel { background: #24292e; color: white; padding: 15px; border-radius: 6px; margin-bottom: 20px; flex-shrink: 0; }
-    .gh-inputs { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
-    .gh-input { flex: 1; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #fafafa; min-width: 200px; }
-    .btn-gh { background: #2ea44f; color: white; border: none; padding: 8px 16px; border-radius: 4px; font-weight: bold; cursor: pointer; }
-    .btn-gh:hover { background: #2c974b; }
-    .gh-note { font-size: 0.8rem; color: #ccc; }
+    /* --- レイアウトの基本設定 (全画面アプリ化) --- */
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden; /* 画面全体のスクロールを禁止 */
+      font-family: "Segoe UI", sans-serif;
+      background: #f4f6f8;
+      color: #333;
+    }
 
-    textarea { width: 100%; height: 80px; padding: 10px; font-family: Consolas, monospace; border-radius: 6px; border: 1px solid #ccc; flex-shrink: 0; }
-    
-    .controls { margin: 10px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; flex-shrink: 0; }
-    
-    button { padding: 8px 16px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; transition: background 0.2s; color: white; }
-    .btn-add { background: #007bff; } .btn-add:hover { background: #0056b3; }
-    .btn-save { background: #28a745; } .btn-save:hover { background: #218838; }
-    .btn-png { background: #6f42c1; } .btn-png:hover { background: #5a32a3; } /* 紫色 */
-    .btn-reset { background: #dc3545; } .btn-reset:hover { background: #c82333; }
+    body {
+      display: flex;
+      flex-direction: column; /* 縦並びレイアウト */
+    }
 
-    .status-msg { font-size: 0.9rem; font-weight: bold; margin-left: 10px; }
+    /* --- 上部操作エリア (固定または内容に応じて伸縮) --- */
+    .top-panel {
+      padding: 10px 20px;
+      flex-shrink: 0; /* 図形エリアに圧迫されて縮まないようにする */
+      background: #f4f6f8;
+      border-bottom: 1px solid #ddd;
+      max-height: 40vh; /* 操作パネルが大きくなりすぎないように制限 */
+      overflow-y: auto; /* 操作パネル内だけスクロール可 */
+    }
+
+    h1 { margin: 0 0 10px 0; font-size: 1.2rem; }
+
+    .gh-panel {
+      background: #24292e; color: white; padding: 10px; 
+      border-radius: 6px; margin-bottom: 10px; 
+    }
+    .gh-inputs { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 5px;}
+    .gh-input { flex: 1; padding: 6px; border-radius: 4px; border: 1px solid #444; min-width: 150px; }
+    .btn-gh { background: #2ea44f; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+    .gh-note { font-size: 0.75rem; color: #ccc; }
+
+    textarea { 
+      width: 100%; height: 60px; padding: 5px; 
+      font-family: Consolas, monospace; border-radius: 4px; border: 1px solid #ccc; 
+      resize: vertical; 
+      box-sizing: border-box; /* パディングを含めた幅計算 */
+    }
+    
+    .controls { margin-top: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    
+    button { padding: 6px 12px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; color: white; font-size: 0.9rem;}
+    .btn-add { background: #007bff; }
+    .btn-save { background: #28a745; }
+    .btn-png { background: #6f42c1; }
+    .btn-reset { background: #dc3545; }
+
+    .status-msg { font-size: 0.85rem; font-weight: bold; margin-left: 5px; }
     .status-success { color: #28a745; } .status-loading { color: #e6a700; } .status-error { color: #dc3545; }
     
-    .legend { font-size: 0.85rem; margin-left: auto; color: #555; display: flex; gap: 10px; }
-    
-    /* Diagram Container */
+    .legend { font-size: 0.8rem; margin-left: auto; color: #555; display: flex; gap: 10px; }
+
+    /* --- 図形表示エリア (残りの高さを全て使う) --- */
+    #diagramWrapper {
+      flex: 1; /* 残りの空間を占有 */
+      min-height: 0; /* Flexアイテムのはみ出し防止に必須 */
+      padding: 10px 20px 20px 20px; /* 余白 */
+      display: flex;
+      flex-direction: column;
+    }
+
     #diagramContainer { 
       background: #fff; 
       border-radius: 8px; 
       box-shadow: 0 4px 10px rgba(0,0,0,0.1); 
-      flex-grow: 1; 
-      min-height: 400px; 
-      overflow: hidden; /* ライブラリ制御のためhidden */
+      border: 1px solid #ccc;
+      
+      /* 親(diagramWrapper)の中でいっぱいに広げる */
+      flex: 1; 
+      width: 100%;
+      height: 100%;
+      
+      overflow: hidden; /* pan-zoomのため */
       position: relative;
-      border: 1px solid #ddd;
     }
     
-    /* SVGを強制的に広げるCSS */
+    /* SVG強制フルサイズ */
     #diagramContainer svg {
       width: 100% !important;
       height: 100% !important;
@@ -60,34 +104,37 @@
 </head>
 <body>
 
-  <h1>C# Repo → Mermaid Visualizer</h1>
+  <div class="top-panel">
+    <h1>C# Repo → Mermaid Visualizer</h1>
 
-  <div class="gh-panel">
-    <h3>GitHubリポジトリからインポート</h3>
-    <div class="gh-inputs">
-      <input type="text" id="repoUrl" class="gh-input" placeholder="https://github.com/user/repo" />
-      <input type="password" id="ghToken" class="gh-input" placeholder="GitHub Token (任意)" />
-      <button onclick="fetchFromGitHub()" class="btn-gh">🚀 リポジトリ読込</button>
+    <div class="gh-panel">
+      <div class="gh-inputs">
+        <input type="text" id="repoUrl" class="gh-input" placeholder="https://github.com/user/repo" />
+        <input type="password" id="ghToken" class="gh-input" placeholder="GitHub Token (任意)" />
+        <button onclick="fetchFromGitHub()" class="btn-gh">🚀 リポジトリ読込</button>
+      </div>
+      <div id="ghStatus" class="status-msg"></div>
     </div>
-    <div id="ghStatus" class="status-msg"></div>
-  </div>
 
-  <textarea id="codeInput" placeholder="// C#コードを手動追加"></textarea>
-  
-  <div class="controls">
-    <button onclick="addCode()" class="btn-add">解析して追加</button>
-    <button onclick="saveToStorage()" class="btn-save">💾 保持 (Save)</button>
-    <button onclick="saveAsPng()" class="btn-png">📷 PNG保存</button>
-    <button onclick="resetAll()" class="btn-reset">全リセット</button>
-    <span id="saveStatus" class="status-msg status-success" style="display:none">保存しました！</span>
+    <textarea id="codeInput" placeholder="// C#コードを手動追加"></textarea>
     
-    <div class="legend">
-      <span><b>ドラッグ:</b> 移動</span>
-      <span><b>Ctrl+ホイール:</b> 拡大</span>
+    <div class="controls">
+      <button onclick="addCode()" class="btn-add">解析して追加</button>
+      <button onclick="saveToStorage()" class="btn-save">💾 保持</button>
+      <button onclick="saveAsPng()" class="btn-png">📷 PNG保存</button>
+      <button onclick="resetAll()" class="btn-reset">リセット</button>
+      <span id="saveStatus" class="status-msg status-success" style="display:none">保存完了</span>
+      
+      <div class="legend">
+        <span><b>ドラッグ:</b> 移動</span>
+        <span><b>Ctrl+ホイール:</b> 拡大</span>
+      </div>
     </div>
   </div>
 
-  <div id="diagramContainer"></div>
+  <div id="diagramWrapper">
+    <div id="diagramContainer"></div>
+  </div>
 
 <script type="module">
   import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
@@ -179,62 +226,45 @@
     setTimeout(() => { msg.style.display = 'none'; }, 2000);
   };
 
-  // PNG 保存機能 (高画質対応)
   window.saveAsPng = function() {
     const container = document.getElementById('diagramContainer');
     const originalSvg = container.querySelector('svg');
     if (!originalSvg) { alert("図がありません"); return; }
 
-    // 1. SVGのクローンを作成 (画面上のズーム状態に影響されないようにする)
     const clonedSvg = originalSvg.cloneNode(true);
-    
-    // svg-pan-zoom が追加したトランスフォームやグループをリセットする
-    // ただし、mermaidが生成した中身は維持したい。
-    // 最も確実なのは、viewBoxを取得して、styleをリセットすること。
     const viewBox = originalSvg.getAttribute('viewBox').split(' ').map(Number);
     const width = viewBox[2];
     const height = viewBox[3];
 
-    // クローンのスタイルを強制的に初期化
     clonedSvg.style.width = width + "px";
     clonedSvg.style.height = height + "px";
     clonedSvg.style.transform = "none";
-    clonedSvg.removeAttribute('class'); // svg-pan-zoomのクラスを削除
+    clonedSvg.removeAttribute('class');
     
-    // svg-pan-zoom は内部コンテンツを <g class="svg-pan-zoom_viewport"> でラップする。
-    // これの transform もリセットしないと、ズームした状態で保存されてしまう。
     const viewport = clonedSvg.querySelector('.svg-pan-zoom_viewport');
     if(viewport) {
         viewport.setAttribute('transform', 'matrix(1,0,0,1,0,0)');
         viewport.removeAttribute('style');
     }
 
-    // 2. XMLシリアライズ
     const serializer = new XMLSerializer();
     const svgData = serializer.serializeToString(clonedSvg);
     const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(svgBlob);
 
-    // 3. Canvasに描画してPNG化
     const img = new Image();
     img.onload = function() {
         const canvas = document.createElement('canvas');
-        // 高解像度化 (scale 2x)
         const scale = 2; 
         canvas.width = width * scale;
         canvas.height = height * scale;
         const ctx = canvas.getContext('2d');
-        
-        // 背景を白にする (透過だと見づらいため)
         ctx.fillStyle = "white";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
         ctx.scale(scale, scale);
         ctx.drawImage(img, 0, 0);
         
         const pngUrl = canvas.toDataURL("image/png");
-        
-        // ダウンロード発火
         const a = document.createElement('a');
         a.href = pngUrl;
         a.download = "class_diagram.png";
@@ -400,7 +430,6 @@
         await mermaid.run({ nodes: [document.querySelector('#mermaidTarget')] }); 
         const svgElement = container.querySelector('svg');
         if(svgElement) {
-            // FIX: CSSで強制上書きしつつ、属性もセットしてライブラリの誤作動を防ぐ
             svgElement.style.maxWidth = "none";
             svgElement.setAttribute("width", "100%");
             svgElement.setAttribute("height", "100%");
