@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>C# → Mermaid Visualizer (Robust Fix)</title>
+  <title>C# → Mermaid Visualizer (Comma Fix)</title>
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
     mermaid.initialize({ startOnLoad: false });
@@ -12,25 +12,31 @@
   <style>
     body { font-family: "Segoe UI", sans-serif; padding: 20px; background: #f4f6f8; color: #333; }
     textarea { width: 100%; height: 150px; padding: 10px; font-family: Consolas, monospace; border-radius: 6px; border: 1px solid #ccc; }
-    .controls { margin: 10px 0; display: flex; gap: 10px; align-items: center; }
+    .controls { margin: 10px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;}
     button { padding: 8px 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; font-weight: bold; }
     button:hover { background: #0056b3; }
     button.reset { background: #dc3545; }
-    .legend { font-size: 0.85rem; margin-left: auto; color: #555; }
+    .legend { font-size: 0.85rem; margin-left: auto; color: #555; display: flex; gap: 10px; }
+    .legend span { display: flex; align-items: center; gap: 4px; }
     #diagramContainer { background: #fff; padding: 20px; border-radius: 8px; min-height: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); overflow: auto; }
   </style>
 </head>
 <body>
 
-  <h1>C# → Mermaid Visualizer (Syntax Error Fixed)</h1>
-  <p>Dictionary&lt;K,V&gt; やラムダ式プロパティ (=&gt;) に対応しました。</p>
-
+  <h1>C# → Mermaid Visualizer (Generic Comma Support)</h1>
+  <p>Dictionary&lt;int, string&gt; のようなカンマを含む型も正常に表示されます。</p>
+  
   <textarea id="codeInput" placeholder="// C#コードを貼り付け"></textarea>
   
   <div class="controls">
     <button onclick="addCode()">解析して追加</button>
     <button onclick="resetAll()" class="reset">全リセット</button>
-    <span class="legend">Generics types are safe now.</span>
+    
+    <div class="legend">
+      <span><b>━━━▷</b> new (太線)</span>
+      <span><b>───▷</b> return (実線)</span>
+      <span><b>- - ▷</b> use/static (点線)</span>
+    </div>
   </div>
 
   <div id="diagramContainer"></div>
@@ -55,8 +61,6 @@
 
   async function analyzeAndRender(source) {
     const cleanSource = removeComments(source);
-    
-    // クラス定義の抽出
     const classes = new Set();
     const classDefRegex = /public\s+(?:static\s+)?class\s+(\w+)/g;
     let match;
@@ -65,14 +69,12 @@
     }
 
     let mermaidDef = "classDiagram\n";
-    let linkStyles = ""; 
-    let linkCounter = 0;
 
-    // クラススタイル定義
+    // クラス定義
     classes.forEach(cls => {
       mermaidDef += `  class ${cls}\n`;
-      if (cls.match(/Manager|Controller|Service/)) mermaidDef += `  style ${cls} fill:#e3f2fd,stroke:#1565c0\n`;
-      else if (cls.match(/Config|Data|Model|Body|World/)) mermaidDef += `  style ${cls} fill:#fff9c4,stroke:#fbc02d\n`;
+      if (cls.match(/Manager|Controller|Service/)) mermaidDef += `  style ${cls} fill:#e3f2fd,stroke:#1565c0,stroke-width:2px\n`;
+      else if (cls.match(/Config|Data|Model|Body|World/)) mermaidDef += `  style ${cls} fill:#fff9c4,stroke:#fbc02d,stroke-width:2px\n`;
     });
 
     const classBlocks = extractClassBlocks(cleanSource);
@@ -81,21 +83,19 @@
       const owner = block.className;
       if (!classes.has(owner)) return;
 
-      // --- A. プロパティ解析 (強化版) ---
-      // 対応: public Type Name { get; set; }  AND  public Type Name => ...
-      // Type部分に < > , [ ] スペース を許可
+      // プロパティ解析 ({ get; set; } or => expression)
       const propRegex = /public\s+(?:static\s+)?(?:readonly\s+)?([\w<>, \?\[\]]+)\s+(\w+)\s*(?:\{|=>)/g;
       let pMatch;
       while ((pMatch = propRegex.exec(block.body)) !== null) {
-        // キーワード "class" が混ざる誤検知を防ぐ
         if (pMatch[1].includes("class ")) continue; 
-
-        const pType = safeType(pMatch[1]);
+        
+        // カンマ対策: formatType関数を通す
+        const pType = formatType(pMatch[1]);
         const pName = pMatch[2];
         mermaidDef += `  ${owner} : +${pType} ${pName}\n`;
       }
 
-      // --- B. メソッド解析 (強化版) ---
+      // メソッド解析
       const methodRegex = /public\s+(?:static\s+)?([\w<>, \?\[\]]+)\s+(\w+)\s*\(([^)]*)\)/g;
       let mMatch;
       const dependencies = new Map();
@@ -103,13 +103,14 @@
       while ((mMatch = methodRegex.exec(block.body)) !== null) {
         const [_, retRaw, mName, argsRaw] = mMatch;
         
-        // 戻り値や引数の型をサニタイズ (Dictionary<int, int> -> Dictionary~int_ int~)
-        const dRet = safeType(retRaw);
-        const dArgs = safeArgs(argsRaw); // カンマ区切りの引数を安全に処理
+        // 型と引数を安全な形式に変換
+        const dRet = formatType(retRaw);
+        // 引数リスト全体のカンマ処理
+        const dArgs = formatArgs(argsRaw);
         
         mermaidDef += `  ${owner} : +${mName}(${dArgs}) ${dRet}\n`;
 
-        // 戻り値の依存関係
+        // 戻り値依存
         const rawRetClass = retRaw.split('<')[0].trim().replace('[]','');
         if (classes.has(rawRetClass) && rawRetClass !== owner) {
            addDep(dependencies, rawRetClass, 'return', 'returns');
@@ -122,20 +123,16 @@
         if (body) {
            classes.forEach(target => {
              if (target === owner) return;
-
              // new Target(...)
-             const newRegex = new RegExp(`new\\s+${target}\\s*\\(`);
-             if (newRegex.test(body)) {
+             if (new RegExp(`new\\s+${target}\\s*\\(`).test(body)) {
                addDep(dependencies, target, 'new', mName);
              }
              // Static call: Target.Method
-             const staticRegex = new RegExp(`\\b${target}\\s*\\.\\w+`);
-             if (staticRegex.test(body)) {
+             else if (new RegExp(`\\b${target}\\s*\\.\\w+`).test(body)) {
                addDep(dependencies, target, 'static', mName);
              }
              // 通常使用
-             const useRegex = new RegExp(`\\b${target}\\b`);
-             if (useRegex.test(body)) {
+             else if (new RegExp(`\\b${target}\\b`).test(body)) {
                addDep(dependencies, target, 'use', mName);
              }
            });
@@ -144,70 +141,76 @@
 
       // 依存関係描画
       dependencies.forEach((info, target) => {
-        let linkStr = "";
-        let color = "";
         const labelText = Array.from(info.labels).join(', ');
 
         if (info.types.has('new')) {
-          linkStr = `  ${owner} --> ${target} : new ${labelText}\n`;
-          color = "#e53935"; // Red
-        } else if (info.types.has('static')) {
-          linkStr = `  ${owner} ..> ${target} : call ${labelText}\n`;
-          color = "#43a047"; // Green
+          mermaidDef += `  ${owner} ==> ${target} : new ${labelText}\n`;
+        } else if (info.types.has('return')) {
+          const l = labelText ? labelText : "returns";
+          mermaidDef += `  ${owner} --> ${target} : ${l}\n`;
         } else {
-          linkStr = `  ${owner} ..> ${target} : ${labelText}\n`;
-          color = ""; 
+          const prefix = info.types.has('static') ? "call " : "";
+          mermaidDef += `  ${owner} ..> ${target} : ${prefix}${labelText}\n`;
         }
-
-        mermaidDef += linkStr;
-        if (color) {
-          linkStyles += `  linkStyle ${linkCounter} stroke:${color},stroke-width:2px,color:${color};\n`;
-        }
-        linkCounter++;
       });
     });
 
-    mermaidDef += linkStyles;
-
-    // エラーハンドリング付き描画
     await renderMermaid(mermaidDef);
   }
 
   // --- ヘルパー関数群 ---
 
   function addDep(map, target, type, label) {
-    if (!map.has(target)) {
-      map.set(target, { types: new Set(), labels: new Set() });
-    }
+    if (!map.has(target)) map.set(target, { types: new Set(), labels: new Set() });
     const entry = map.get(target);
     entry.types.add(type);
     if (label !== 'returns') entry.labels.add(label);
   }
 
-  // 型名のサニタイズ: Dictionary<int, PhysicsWorld> -> Dictionary~int_PhysicsWorld~
-  function safeType(t) {
-    if(!t) return "";
-    let safe = t.trim();
-    // 不要な修飾子削除
-    safe = safe.replace(/\b(readonly|volatile|virtual|override)\b/g, '').trim();
-    // < > を ~ に置換 (Mermaidジェネリクス)
-    safe = safe.replace(/</g, '~').replace(/>/g, '~');
-    // 型の中のカンマはMermaidで誤作動の原因になるため、アンダースコアかスペースに置換
-    // ただし、~で囲まれた内部だけ置換したいが、簡易的に全体置換でも表示は崩れない
-    // ここでは見た目を優先してカンマをそのまま許容せず置換する
-    safe = safe.replace(/,/g, ' '); 
-    return safe;
+  // 型変換: Dictionary<int, string> -> Dictionary~int， string~
+  // カンマを全角カンマ(U+FF0C)に置換してMermaidの構文エラーを回避する
+  function formatType(raw) {
+    if (!raw) return "";
+    let safe = raw.trim().replace(/\b(readonly|volatile|virtual|override)\b/g, '').trim();
+    return escapeGenerics(safe);
   }
 
-  // 引数リストのサニタイズ: (int a, Action<T> b) -> int a, Action~T~ b
-  function safeArgs(argsRaw) {
-    if(!argsRaw) return "";
-    // まずジェネリクスの < > を ~ に
-    let s = argsRaw.replace(/</g, '~').replace(/>/g, '~');
-    // 引数区切りのカンマは維持したいが、Mermaidは()内でカンマを使うとエラーになる場合がある
-    // そのため、カンマをスペースに置換するのが安全
-    s = s.replace(/,/g, ' '); 
-    return s;
+  // 引数リスト変換: (int a, Dict<K,V> b) -> int a, Dict~K，V~ b
+  // 引数区切りのカンマはスペースに、ジェネリック内のカンマは全角カンマにする
+  function formatArgs(raw) {
+    if (!raw) return "";
+    // ジェネリックをまずエスケープしつつ、引数区切りを処理する
+    return escapeGenerics(raw, true);
+  }
+
+  // 文字列を走査して < > 内のカンマだけを全角にする
+  function escapeGenerics(str, isArgList = false) {
+    let result = "";
+    let depth = 0;
+    
+    for (let i = 0; i < str.length; i++) {
+      const char = str[i];
+      
+      if (char === '<') {
+        depth++;
+        result += '~'; // Mermaid用のブラケット
+      } else if (char === '>') {
+        depth--;
+        result += '~';
+      } else if (char === ',') {
+        if (depth > 0) {
+          // ジェネリック内部のカンマ -> 全角カンマに置換 (見た目はほぼ同じ)
+          result += '，'; 
+        } else {
+          // ジェネリック外のカンマ -> 引数区切りならスペース、型内なら無視
+          // Mermaidの引数区切りはスペース推奨
+          result += isArgList ? ' ' : ' ';
+        }
+      } else {
+        result += char;
+      }
+    }
+    return result;
   }
 
   function extractClassBlocks(src) {
@@ -244,10 +247,7 @@
       await mermaid.run({ nodes: [document.querySelector('#mermaidTarget')] }); 
     } catch(e) {
       console.error(e);
-      // エラー時は原因箇所のテキストを表示
-      container.innerHTML = `<p style="color:red; font-weight:bold;">Syntax Error Fix Failed.</p>
-                             <p>Mermaid cannot parse:</p>
-                             <textarea style="width:100%;height:300px;">${def}</textarea>`;
+      container.innerHTML = `<p style="color:red; font-weight:bold;">Syntax Error:</p><textarea style="width:100%;height:300px;">${def}</textarea>`;
     }
   }
 </script>
