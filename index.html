@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>C# → Mermaid Visualizer (Comma Fix)</title>
+  <title>C# → Mermaid Visualizer (Split Relations)</title>
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
     mermaid.initialize({ startOnLoad: false });
@@ -23,8 +23,8 @@
 </head>
 <body>
 
-  <h1>C# → Mermaid Visualizer (Generic Comma Support)</h1>
-  <p>Dictionary&lt;int, string&gt; のようなカンマを含む型も正常に表示されます。</p>
+  <h1>C# → Mermaid Visualizer (Relation Split)</h1>
+  <p>「生成(new)」と「使用(use)」の矢印を分離して表示します。</p>
   
   <textarea id="codeInput" placeholder="// C#コードを貼り付け"></textarea>
   
@@ -33,9 +33,9 @@
     <button onclick="resetAll()" class="reset">全リセット</button>
     
     <div class="legend">
-      <span><b>━━━▷</b> new (太線)</span>
-      <span><b>───▷</b> return (実線)</span>
-      <span><b>- - ▷</b> use/static (点線)</span>
+      <span><b>━━━▷</b> new</span>
+      <span><b>- - ▷</b> use/static</span>
+      <span><b>───▷</b> return</span>
     </div>
   </div>
 
@@ -70,7 +70,6 @@
 
     let mermaidDef = "classDiagram\n";
 
-    // クラス定義
     classes.forEach(cls => {
       mermaidDef += `  class ${cls}\n`;
       if (cls.match(/Manager|Controller|Service/)) mermaidDef += `  style ${cls} fill:#e3f2fd,stroke:#1565c0,stroke-width:2px\n`;
@@ -83,55 +82,54 @@
       const owner = block.className;
       if (!classes.has(owner)) return;
 
-      // プロパティ解析 ({ get; set; } or => expression)
+      // プロパティ
       const propRegex = /public\s+(?:static\s+)?(?:readonly\s+)?([\w<>, \?\[\]]+)\s+(\w+)\s*(?:\{|=>)/g;
       let pMatch;
       while ((pMatch = propRegex.exec(block.body)) !== null) {
         if (pMatch[1].includes("class ")) continue; 
-        
-        // カンマ対策: formatType関数を通す
         const pType = formatType(pMatch[1]);
         const pName = pMatch[2];
         mermaidDef += `  ${owner} : +${pType} ${pName}\n`;
       }
 
-      // メソッド解析
+      // メソッド解析 & 依存関係収集
       const methodRegex = /public\s+(?:static\s+)?([\w<>, \?\[\]]+)\s+(\w+)\s*\(([^)]*)\)/g;
       let mMatch;
+      
+      // 変更点: タイプごとに別々のSetで管理する
+      // Map<TargetClass, { new: Set, static: Set, use: Set, return: Set }>
       const dependencies = new Map();
 
       while ((mMatch = methodRegex.exec(block.body)) !== null) {
         const [_, retRaw, mName, argsRaw] = mMatch;
-        
-        // 型と引数を安全な形式に変換
         const dRet = formatType(retRaw);
-        // 引数リスト全体のカンマ処理
         const dArgs = formatArgs(argsRaw);
         
         mermaidDef += `  ${owner} : +${mName}(${dArgs}) ${dRet}\n`;
 
-        // 戻り値依存
+        // 戻り値
         const rawRetClass = retRaw.split('<')[0].trim().replace('[]','');
         if (classes.has(rawRetClass) && rawRetClass !== owner) {
            addDep(dependencies, rawRetClass, 'return', 'returns');
         }
 
-        // メソッド内部解析
+        // 内部解析
         const endIdx = mMatch.index + mMatch[0].length;
         const body = extractBlock(block.body, endIdx);
         
         if (body) {
            classes.forEach(target => {
              if (target === owner) return;
-             // new Target(...)
+             
+             // new Target(...) -> 'new' カテゴリへ
              if (new RegExp(`new\\s+${target}\\s*\\(`).test(body)) {
                addDep(dependencies, target, 'new', mName);
              }
-             // Static call: Target.Method
+             // Target.Method -> 'static' カテゴリへ
              else if (new RegExp(`\\b${target}\\s*\\.\\w+`).test(body)) {
                addDep(dependencies, target, 'static', mName);
              }
-             // 通常使用
+             // 通常使用 -> 'use' カテゴリへ
              else if (new RegExp(`\\b${target}\\b`).test(body)) {
                addDep(dependencies, target, 'use', mName);
              }
@@ -139,18 +137,30 @@
         }
       }
 
-      // 依存関係描画
-      dependencies.forEach((info, target) => {
-        const labelText = Array.from(info.labels).join(', ');
+      // 依存関係描画 (タイプごとに線を引く)
+      dependencies.forEach((types, target) => {
+        
+        // 1. New (太線・赤)
+        if (types.new.size > 0) {
+          const labels = Array.from(types.new).join(', ');
+          mermaidDef += `  ${owner} ==> ${target} : new ${labels}\n`;
+          // 色付けはlinkStyleを使わず線の種類で区別するが、
+          // どうしても色を付けたい場合はここでindex管理が必要(今回は省略し ==> を使用)
+        }
 
-        if (info.types.has('new')) {
-          mermaidDef += `  ${owner} ==> ${target} : new ${labelText}\n`;
-        } else if (info.types.has('return')) {
-          const l = labelText ? labelText : "returns";
-          mermaidDef += `  ${owner} --> ${target} : ${l}\n`;
-        } else {
-          const prefix = info.types.has('static') ? "call " : "";
-          mermaidDef += `  ${owner} ..> ${target} : ${prefix}${labelText}\n`;
+        // 2. Static / Use (点線) - まとめて表示
+        const usageLabels = [];
+        if (types.static.size > 0) usageLabels.push("call " + Array.from(types.static).join(', '));
+        if (types.use.size > 0) usageLabels.push(Array.from(types.use).join(', '));
+        
+        if (usageLabels.length > 0) {
+          mermaidDef += `  ${owner} ..> ${target} : ${usageLabels.join(', ')}\n`;
+        }
+
+        // 3. Return (実線)
+        if (types.return.size > 0) {
+           // returnsラベルは邪魔なら空文字にしてもOK
+           mermaidDef += `  ${owner} --> ${target} : \n`;
         }
       });
     });
@@ -158,57 +168,40 @@
     await renderMermaid(mermaidDef);
   }
 
-  // --- ヘルパー関数群 ---
-
   function addDep(map, target, type, label) {
-    if (!map.has(target)) map.set(target, { types: new Set(), labels: new Set() });
+    if (!map.has(target)) {
+      map.set(target, { new: new Set(), static: new Set(), use: new Set(), return: new Set() });
+    }
     const entry = map.get(target);
-    entry.types.add(type);
-    if (label !== 'returns') entry.labels.add(label);
+    // タイプ別のSetに追加
+    if (entry[type]) {
+       if (label !== 'returns') entry[type].add(label);
+       else entry[type].add('returns'); // ダミー登録
+    }
   }
 
-  // 型変換: Dictionary<int, string> -> Dictionary~int， string~
-  // カンマを全角カンマ(U+FF0C)に置換してMermaidの構文エラーを回避する
   function formatType(raw) {
     if (!raw) return "";
     let safe = raw.trim().replace(/\b(readonly|volatile|virtual|override)\b/g, '').trim();
     return escapeGenerics(safe);
   }
 
-  // 引数リスト変換: (int a, Dict<K,V> b) -> int a, Dict~K，V~ b
-  // 引数区切りのカンマはスペースに、ジェネリック内のカンマは全角カンマにする
   function formatArgs(raw) {
     if (!raw) return "";
-    // ジェネリックをまずエスケープしつつ、引数区切りを処理する
     return escapeGenerics(raw, true);
   }
 
-  // 文字列を走査して < > 内のカンマだけを全角にする
   function escapeGenerics(str, isArgList = false) {
     let result = "";
     let depth = 0;
-    
     for (let i = 0; i < str.length; i++) {
       const char = str[i];
-      
-      if (char === '<') {
-        depth++;
-        result += '~'; // Mermaid用のブラケット
-      } else if (char === '>') {
-        depth--;
-        result += '~';
-      } else if (char === ',') {
-        if (depth > 0) {
-          // ジェネリック内部のカンマ -> 全角カンマに置換 (見た目はほぼ同じ)
-          result += '，'; 
-        } else {
-          // ジェネリック外のカンマ -> 引数区切りならスペース、型内なら無視
-          // Mermaidの引数区切りはスペース推奨
-          result += isArgList ? ' ' : ' ';
-        }
-      } else {
-        result += char;
-      }
+      if (char === '<') { depth++; result += '~'; }
+      else if (char === '>') { depth--; result += '~'; }
+      else if (char === ',') {
+        if (depth > 0) result += '，'; 
+        else result += isArgList ? ' ' : ' ';
+      } else { result += char; }
     }
     return result;
   }
@@ -243,11 +236,10 @@
   async function renderMermaid(def) {
     const container = document.getElementById('diagramContainer');
     container.innerHTML = `<pre class="mermaid" id="mermaidTarget">${def}</pre>`;
-    try { 
-      await mermaid.run({ nodes: [document.querySelector('#mermaidTarget')] }); 
-    } catch(e) {
+    try { await mermaid.run({ nodes: [document.querySelector('#mermaidTarget')] }); } 
+    catch(e) { 
       console.error(e);
-      container.innerHTML = `<p style="color:red; font-weight:bold;">Syntax Error:</p><textarea style="width:100%;height:300px;">${def}</textarea>`;
+      container.innerHTML = `<p style="color:red">Syntax Error</p><textarea style="width:100%;height:300px;">${def}</textarea>`;
     }
   }
 </script>
