@@ -3,38 +3,46 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>C# → Mermaid クラス図（メソッド依存明記版）</title>
+  <title>C# → Mermaid Visualizer (Full Features)</title>
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
     mermaid.initialize({ startOnLoad: false });
     window.mermaid = mermaid;
   </script>
   <style>
-    body { font-family: "Segoe UI", sans-serif; padding: 20px; background: #f0f2f5; color: #333; }
-    h1 { font-size: 1.4rem; margin-bottom: 0.5em; }
-    p { font-size: 0.9rem; color: #666; }
-    .container { display: flex; flex-direction: column; gap: 15px; }
-    textarea { width: 100%; height: 120px; padding: 10px; font-family: Consolas, monospace; border: 1px solid #ccc; border-radius: 6px; }
-    .controls { display: flex; gap: 10px; }
+    body { font-family: "Segoe UI", sans-serif; padding: 20px; background: #f4f6f8; color: #333; }
+    textarea { width: 100%; height: 120px; padding: 10px; font-family: Consolas, monospace; border-radius: 6px; border: 1px solid #ccc; }
+    .controls { margin: 10px 0; display: flex; gap: 10px; align-items: center; }
     button { padding: 8px 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; font-weight: bold; }
     button:hover { background: #0056b3; }
     button.reset { background: #dc3545; }
-    #diagramContainer { background: #fff; padding: 20px; border-radius: 8px; min-height: 300px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); overflow: auto; }
+    
+    /* 凡例 */
+    .legend { display: flex; gap: 15px; font-size: 0.85rem; margin-left: auto; }
+    .legend span { display: flex; align-items: center; gap: 5px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    
+    #diagramContainer { background: #fff; padding: 20px; border-radius: 8px; min-height: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
   </style>
 </head>
 <body>
 
-  <h1>C# → Mermaid クラス図（メソッド名表示版）</h1>
-  <p>依存関係の矢印に「どのメソッドが使っているか」を列挙して表示します。</p>
+  <h1>C# クラス図ビジュアライザー (プロパティ & 詳細依存版)</h1>
 
-  <div class="container">
-    <textarea id="codeInput" placeholder="// public class ... などのコードをここに貼り付け"></textarea>
-    <div class="controls">
-      <button onclick="addCode()">解析して追加</button>
-      <button onclick="resetAll()" class="reset">全リセット</button>
+  <textarea id="codeInput" placeholder="// ここに C# コードを貼り付け"></textarea>
+  
+  <div class="controls">
+    <button onclick="addCode()">解析して追加</button>
+    <button onclick="resetAll()" class="reset">全リセット</button>
+    
+    <div class="legend">
+      <span><i class="dot" style="background:#e53935"></i> new (生成)</span>
+      <span><i class="dot" style="background:#43a047"></i> Static Call</span>
+      <span><i class="dot" style="background:#333"></i> Uses/Returns</span>
     </div>
-    <div id="diagramContainer"></div>
   </div>
+
+  <div id="diagramContainer"></div>
 
 <script type="module">
   import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
@@ -43,9 +51,8 @@
 
   window.addCode = async function() {
     const input = document.getElementById('codeInput');
-    const newCode = input.value;
-    if(!newCode.trim()) return;
-    fullSourceCode += "\n" + newCode;
+    if(!input.value.trim()) return;
+    fullSourceCode += "\n" + input.value;
     await analyzeAndRender(fullSourceCode);
     input.value = "";
   };
@@ -58,7 +65,7 @@
   async function analyzeAndRender(source) {
     const cleanSource = removeComments(source);
     
-    // クラス一覧取得
+    // 1. クラス一覧取得
     const classes = new Set();
     const classDefRegex = /public\s+(?:static\s+)?class\s+(\w+)/g;
     let match;
@@ -67,102 +74,164 @@
     }
 
     let mermaidDef = "classDiagram\n";
-    classes.forEach(cls => mermaidDef += `  class ${cls}\n`);
+    let linkStyles = ""; // 色付け用コマンドを貯める変数
+    let linkCounter = 0; // 線の本数をカウント（0始まり）
 
-    // ブロック解析
+    // クラスごとの定義
+    classes.forEach(cls => {
+      mermaidDef += `  class ${cls}\n`;
+      // 簡単な役割色分け（前回同様）
+      if (cls.match(/Manager|Controller|Service/)) mermaidDef += `  style ${cls} fill:#e3f2fd,stroke:#1565c0\n`;
+      else if (cls.match(/Config|Data|Model/)) mermaidDef += `  style ${cls} fill:#fff9c4,stroke:#fbc02d\n`;
+    });
+
     const classBlocks = extractClassBlocks(cleanSource);
 
     classBlocks.forEach(block => {
-      const ownerClass = block.className;
-      if (!classes.has(ownerClass)) return;
+      const owner = block.className;
+      if (!classes.has(owner)) return;
 
-      // 依存関係を一時保存するMap
-      // key: ターゲットクラス名, value: Set(それを使っているメソッド名のリスト)
-      const dependencies = new Map();
+      // --- A. プロパティ解析 ---
+      // Regex: public Type Name { get; set; }
+      // 除外: method(...) のカッコがあるものは避ける
+      const propRegex = /public\s+(?:static\s+)?([\w<>\[\]]+)\s+(\w+)\s*\{/g;
+      let pMatch;
+      while ((pMatch = propRegex.exec(block.body)) !== null) {
+        const pType = safeType(pMatch[1]);
+        const pName = pMatch[2];
+        mermaidDef += `  ${owner} : +${pType} ${pName}\n`;
+      }
 
-      // メソッド解析
+      // --- B. メソッド解析 ---
       const methodRegex = /public\s+(?:static\s+)?([\w<>\[\]]+)\s+(\w+)\s*\(([^)]*)\)/g;
       let mMatch;
       
-      while ((mMatch = methodRegex.exec(block.body)) !== null) {
-        const retType = mMatch[1];
-        const mName = mMatch[2];
-        const args = mMatch[3];
-        
-        // メソッド描画用定義
-        const dispRet = retType.replace(/</g, '~').replace(/>/g, '~');
-        const dispArgs = args.replace(/</g, '~').replace(/>/g, '~').replace(/,/g, ' ');
-        mermaidDef += `  ${ownerClass} : +${mName}(${dispArgs}) ${dispRet}\n`;
+      // 依存関係収集用: Map<TargetClass, { types: Set(['new','static','use']), labels: Set() }>
+      const dependencies = new Map();
 
-        // 1. 戻り値の型による依存
-        const rawRet = retType.split('<')[0].replace('[]','');
-        if (classes.has(rawRet) && rawRet !== ownerClass) {
-          // 戻り値の関係は "returns" として別扱いにするか、統合するか。
-          // ここでは分かりやすく "returns" というラベルのまま矢印を追加
-          mermaidDef += `  ${ownerClass} --> ${rawRet} : returns\n`;
+      while ((mMatch = methodRegex.exec(block.body)) !== null) {
+        const [_, ret, mName, args] = mMatch;
+        const dRet = safeType(ret);
+        const dArgs = args.replace(/</g,'~').replace(/>/g,'~').replace(/,/g,' ');
+        
+        mermaidDef += `  ${owner} : +${mName}(${dArgs}) ${dRet}\n`;
+
+        // 戻り値依存
+        const rawRet = ret.split('<')[0].replace('[]','');
+        if (classes.has(rawRet) && rawRet !== owner) {
+           addDep(dependencies, rawRet, 'return', 'returns');
         }
 
-        // 2. メソッド内での使用 (Uses)
-        const methodEndIndex = mMatch.index + mMatch[0].length;
-        const methodBody = extractBlock(block.body, methodEndIndex);
+        // メソッド内部解析
+        const endIdx = mMatch.index + mMatch[0].length;
+        const body = extractBlock(block.body, endIdx);
         
-        if (methodBody) {
-           classes.forEach(targetClass => {
-             if (targetClass === ownerClass) return;
-             
-             // 単語境界で検索
-             const usageRegex = new RegExp(`\\b${targetClass}\\b`);
-             if (usageRegex.test(methodBody)) {
-               // まだMapになければ作成
-               if (!dependencies.has(targetClass)) {
-                 dependencies.set(targetClass, new Set());
-               }
-               // 「このクラスは、このメソッドで使われている」と記録
-               dependencies.get(targetClass).add(mName);
+        if (body) {
+           classes.forEach(target => {
+             if (target === owner) return;
+
+             // 1. new 検知: "new TargetClass("
+             const newRegex = new RegExp(`new\\s+${target}\\s*\\(`);
+             if (newRegex.test(body)) {
+               addDep(dependencies, target, 'new', mName);
+             }
+
+             // 2. Static Call 検知: "TargetClass." (直後に英数字)
+             // 注: インスタンスメソッド呼び出しと区別するため "Target." を探す
+             const staticRegex = new RegExp(`\\b${target}\\s*\\.\\w+`);
+             if (staticRegex.test(body)) {
+               addDep(dependencies, target, 'static', mName);
+             }
+
+             // 3. 通常使用 (変数型など): 単語として存在するか
+             const useRegex = new RegExp(`\\b${target}\\b`);
+             if (useRegex.test(body)) {
+               // new でも static でもない場合のみ 'use' として記録
+               addDep(dependencies, target, 'use', mName);
              }
            });
         }
       }
 
-      // 収集した依存関係をまとめてMermaid定義に出力
-      dependencies.forEach((methodSet, targetClass) => {
-        // メソッド名のリストをカンマ区切り文字列に変換
-        // 例: "JoinWorld, StepWorld, Atomic"
-        const label = Array.from(methodSet).join(', ');
+      // --- C. 依存関係の描画と色付け ---
+      dependencies.forEach((info, target) => {
+        // 優先度判定: new > static > return/use
+        let linkStr = "";
+        let color = "";
         
-        // 点線矢印 (..>) で、ラベルにメソッド一覧を載せる
-        mermaidDef += `  ${ownerClass} ..> ${targetClass} : ${label}\n`;
+        // ラベル作成: 重複排除して結合
+        const labelText = Array.from(info.labels).join(', ');
+
+        if (info.types.has('new')) {
+          // 生成関係 (実線 & 赤)
+          linkStr = `  ${owner} --> ${target} : new ${labelText}\n`;
+          color = "#e53935"; // Red
+        } else if (info.types.has('static')) {
+          // Static呼び出し (点線 & 緑)
+          linkStr = `  ${owner} ..> ${target} : call ${labelText}\n`;
+          color = "#43a047"; // Green
+        } else {
+          // 通常使用/戻り値 (点線 & グレー/黒)
+          // 戻り値のみの場合は "returns"、それ以外はメソッド名
+          linkStr = `  ${owner} ..> ${target} : ${labelText}\n`;
+          color = ""; // Default
+        }
+
+        mermaidDef += linkStr;
+
+        // 色指定がある場合、直前のリンク(linkCounter)にスタイル適用
+        if (color) {
+          // MermaidのlinkStyleは定義順のインデックス(0,1,2...)を指定する
+          linkStyles += `  linkStyle ${linkCounter} stroke:${color},stroke-width:2px,color:${color};\n`;
+        }
+        linkCounter++;
       });
     });
+
+    // 定義の最後にスタイルを追加
+    mermaidDef += linkStyles;
 
     await renderMermaid(mermaidDef);
   }
 
-  // 以下、共通ユーティリティ関数
-  function extractClassBlocks(source) {
+  // 依存関係管理ヘルパー
+  function addDep(map, target, type, label) {
+    if (!map.has(target)) {
+      map.set(target, { types: new Set(), labels: new Set() });
+    }
+    const entry = map.get(target);
+    entry.types.add(type);
+    // returnなどはラベル追加しない（冗長になるため）、メソッド名などは追加
+    if (label !== 'returns') {
+        entry.labels.add(label);
+    }
+  }
+
+  function safeType(t) {
+    return t.replace(/</g, '~').replace(/>/g, '~');
+  }
+
+  function extractClassBlocks(src) {
     const blocks = [];
     const regex = /public\s+(?:static\s+)?class\s+(\w+)/g;
     let match;
-    while ((match = regex.exec(source)) !== null) {
-      const className = match[1];
-      const startIndex = match.index + match[0].length;
-      const body = extractBlock(source, startIndex);
-      if (body) blocks.push({ className, body });
+    while((match = regex.exec(src)) !== null) {
+      const body = extractBlock(src, match.index + match[0].length);
+      if(body) blocks.push({ className: match[1], body });
     }
     return blocks;
   }
-
-  function extractBlock(text, startIndex) {
-    let openIndex = text.indexOf('{', startIndex);
-    if (openIndex === -1) return null;
-    let depth = 1;
-    let i = openIndex + 1;
-    while (i < text.length && depth > 0) {
-      if (text[i] === '{') depth++;
-      else if (text[i] === '}') depth--;
+  
+  function extractBlock(text, start) {
+    let open = text.indexOf('{', start);
+    if(open === -1) return null;
+    let d = 1, i = open + 1;
+    while(i < text.length && d > 0) {
+      if(text[i] === '{') d++;
+      else if(text[i] === '}') d--;
       i++;
     }
-    return text.substring(openIndex + 1, i - 1);
+    return text.substring(open + 1, i - 1);
   }
 
   function removeComments(str) {
@@ -172,12 +241,7 @@
   async function renderMermaid(def) {
     const container = document.getElementById('diagramContainer');
     container.innerHTML = `<pre class="mermaid" id="mermaidTarget">${def}</pre>`;
-    try {
-      await mermaid.run({ nodes: [document.querySelector('#mermaidTarget')] });
-    } catch (e) {
-      console.error(e);
-      container.innerHTML += `<p style="color:red">Error: ${e.message}</p>`;
-    }
+    try { await mermaid.run({ nodes: [document.querySelector('#mermaidTarget')] }); } catch(e){}
   }
 </script>
 </body>
