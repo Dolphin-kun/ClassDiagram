@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>C# → Mermaid Viz (Namespace & Unique)</title>
+  <title>C# → Mermaid Viz (Fixed Namespace)</title>
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
     mermaid.initialize({ startOnLoad: false });
@@ -33,8 +33,8 @@
 </head>
 <body>
 
-  <h1>C# → Mermaid Visualizer (Namespace対応版)</h1>
-  <p>Namespaceごとのグループ化と、重複クラスの自動除外を行います。</p>
+  <h1>C# → Mermaid Visualizer (Namespace修正版)</h1>
+  <p>Namespaceの解析ロジックを修正し、クラスが正しく表示されるようにしました。</p>
   
   <textarea id="codeInput" placeholder="// C#コードを貼り付け"></textarea>
   
@@ -89,81 +89,53 @@
   };
 
   async function analyzeAndRender(source) {
+    // コメント削除
     let cleanSource = removeComments(source);
     
-    // クラス名の一意性を保つためのSet（重複防止）
     const processedClasses = new Set();
-    
-    // Namespaceごとのコードブロックを管理するMap
-    // key: namespace名, value: コード文字列の配列
     const namespaceMap = new Map();
-    namespaceMap.set("Global", []); // Namespace外のクラス用
+    namespaceMap.set("Global", []); 
 
-    // 1. ブロック形式のNamespaceを抽出 (namespace X { ... })
-    // Regex: namespace Name { body }
-    const nsBlockRegex = /namespace\s+([\w\.]+)\s*/g;
-    let match;
-    
-    // 文字列を走査してNamespaceブロックを切り出す
-    // extractBlockを使うため、Regexループではなく手動で検索位置を進める
+    // --- Namespace抽出ロジック（修正版） ---
     let cursor = 0;
     while (cursor < cleanSource.length) {
-      // 次の "namespace" を探す
       const nsIndex = cleanSource.indexOf("namespace ", cursor);
-      if (nsIndex === -1) break; // もうない
+      if (nsIndex === -1) break; 
 
-      // namespaceキーワードの後の "{" を探す
       const openBraceIndex = cleanSource.indexOf("{", nsIndex);
       const semiColonIndex = cleanSource.indexOf(";", nsIndex);
       
-      // ファイルスコープ (namespace X;) か ブロック (namespace X { }) か判定
-      // { より先に ; が来たらファイルスコープ（あるいは { がない）
+      // ファイルスコープ namespace X; の簡易判定
       if (semiColonIndex !== -1 && (openBraceIndex === -1 || semiColonIndex < openBraceIndex)) {
-         // ファイルスコープ: namespace X;
-         // 本当はこれ以降の全コードが対象だが、簡易的に「ここから末尾まで」をそのNamespace扱いにする
-         // ただし、複数貼り付けに対応するため、このファイルスコープの実装は
-         // 「貼り付け単位」で管理しないと難しい。
-         // 今回は簡易的に「Global」扱いにするか、正規表現で名前だけ取る。
-         // ※複雑化回避のため、今回は { } ブロック形式を優先して処理し、マッチしない部分はGlobalに残す
          cursor = semiColonIndex + 1; 
          continue;
       }
 
       if (openBraceIndex !== -1) {
-        // 名前を取得
+        // 名前取得
         const nsName = cleanSource.substring(nsIndex + 10, openBraceIndex).trim();
         
-        // ブロックの中身を抽出
-        const body = extractBlock(cleanSource, openBraceIndex + 1); // +1修正: {の次から
+        // 【修正点】findBlockEndを使って正確な範囲を取得
+        const blockEnd = findBlockEnd(cleanSource, openBraceIndex);
         
-        if (body) {
+        if (blockEnd !== -1) {
+           // { と } の間の文字列を取得（これがNamespaceの中身）
+           const body = cleanSource.substring(openBraceIndex + 1, blockEnd);
+           
            if (!namespaceMap.has(nsName)) namespaceMap.set(nsName, []);
            namespaceMap.get(nsName).push(body);
 
-           // 元の文字列からこのブロックを除去（置換）してGlobalに残らないようにする
-           // ただし位置がずれるので、除去する部分は空白で埋めるか、
-           // 「抽出したものリスト」だけで処理を進める。
-           // ここでは「namespaceMap」に入れた上で、Global解析用に元の文字列から消す（空白化）
-           const fullBlockLength = (cleanSource.indexOf("}", openBraceIndex) - nsIndex) + 1; 
-           // 正確な終了位置を取得するために再計算
-           // extractBlockは中身を返すので、全体長を知るには中身長+2({})+name長などを計算する必要があるが面倒
-           // 簡便法: 抽出済みとしてマークし、Global解析時には使わない
+           // 抽出した部分を元文字列から消す（空白で埋めてインデックスずれを防ぐ）
+           const blockStart = nsIndex; 
+           const padding = " ".repeat(blockEnd - blockStart + 1);
            
-           // 今回は「抽出した部分を空白に置換」してGlobalに残らないようにする
-           const blockStart = nsIndex;
-           // bodyは中身だけなので、元のテキストでの終了位置を探す必要がある
-           // extractBlockロジックを再利用して終了位置を見つける
-           const blockEnd = findBlockEnd(cleanSource, openBraceIndex);
-           
-           // 置換（文字列操作は不変なので新しい文字列を作る）
            const before = cleanSource.substring(0, blockStart);
            const after = cleanSource.substring(blockEnd + 1);
-           // 置換した分、文字数が減るとインデックスが狂うので、同じ長さの空白で埋める
-           const padding = " ".repeat(blockEnd - blockStart + 1);
            cleanSource = before + padding + after;
            
            cursor = blockEnd + 1;
         } else {
+           // 閉じ括弧が見つからない場合など
            cursor = openBraceIndex + 1;
         }
       } else {
@@ -171,51 +143,40 @@
       }
     }
 
-    // 残ったコードはGlobal
+    // 残りはGlobal
     namespaceMap.get("Global").push(cleanSource);
 
-
     let mermaidDef = "classDiagram\n";
+    const allClassBlocks = [];
 
-    // --- 各Namespaceごとにクラスを解析 ---
-    const allClassBlocks = []; // 後でリレーション解析に使う
-
-    // Namespaceの出力順序制御（Globalを最後に回すなど）
+    // --- 各Namespace解析 ---
     for (const [nsName, codeBlocks] of namespaceMap) {
       if (codeBlocks.join("").trim() === "") continue;
 
       let nsDef = "";
       
       codeBlocks.forEach(code => {
-        // クラス定義抽出
         const regex = /public\s+(?:static\s+)?class\s+(\w+)(?:\s*:\s*([\w, ]+))?/g;
         let match;
         while ((match = regex.exec(code)) !== null) {
           const className = match[1];
           const inheritanceRaw = match[2];
 
-          // 重複チェック: 既に処理済みのクラスならスキップ
           if (processedClasses.has(className)) continue;
           processedClasses.add(className);
 
           nsDef += `    class ${className}\n`;
           
-          // スタイル
           if (className.match(/Manager|Controller|Service/)) nsDef += `    style ${className} fill:#e3f2fd,stroke:#1565c0,stroke-width:2px\n`;
           else if (className.match(/Config|Data|Model|Body|World/)) nsDef += `    style ${className} fill:#fff9c4,stroke:#fbc02d,stroke-width:2px\n`;
 
-          // 継承関係 (Namespace外のクラスとの関係も考慮するため、ここでは定義だけ追加)
           if (inheritanceRaw) {
              const parents = inheritanceRaw.split(',').map(p => p.trim().split('<')[0]);
              parents.forEach(p => {
-               // 親クラスが存在するかは全解析後じゃないと確定しないが、Mermaidは未定義ノードも描画してくれるのでOK
-               // ただし、subgraph外への線になる可能性があるので、定義はグローバルスコープで行うのが安全
-               // 一旦ここでは配列に保存しておく
                allClassBlocks.push({ type:'inheritance', child: className, parent: p });
              });
           }
 
-          // クラスの中身を抽出して保存（リレーション解析用）
           const body = extractBlock(code, match.index + match[0].length);
           if (body) {
             allClassBlocks.push({ type:'class', className, body });
@@ -224,30 +185,26 @@
       });
 
       if (nsDef.trim() !== "") {
-        // Global以外はsubgraphで囲む
         if (nsName !== "Global") {
           mermaidDef += `  subgraph "${nsName}"\n`;
-          mermaidDef += `    direction TB\n`; // Top to Bottom
+          mermaidDef += `    direction TB\n`;
           mermaidDef += nsDef;
           mermaidDef += `  end\n`;
         } else {
-          mermaidDef += nsDef; // Globalはそのまま
+          mermaidDef += nsDef;
         }
       }
     }
 
-    // --- メソッド・プロパティ・リレーションの解析 ---
+    // --- 詳細解析 ---
     allClassBlocks.forEach(item => {
-      // 継承関係の出力
       if (item.type === 'inheritance') {
-         // 親クラスがprocessedClassesにある場合のみ描画（ノイズ防止）
          if (processedClasses.has(item.parent)) {
             mermaidDef += `  ${item.parent} <|-- ${item.child}\n`;
          }
          return;
       }
 
-      // クラス定義処理
       const owner = item.className;
       const body = item.body;
 
@@ -259,10 +216,10 @@
         mermaidDef += `  ${owner} : +${formatType(pMatch[1])} ${pMatch[2]}\n`;
       }
 
-      // メソッド & リレーション
+      // メソッド
       const methodRegex = /public\s+(?:static\s+)?([\w<>, \?\[\]]+)\s+(\w+)\s*\(([^)]*)\)/g;
       let mMatch;
-      const relations = new Map(); // Target -> { solid: Set, dashed: Set }
+      const relations = new Map(); 
 
       while ((mMatch = methodRegex.exec(body)) !== null) {
         const [_, retRaw, mName, argsRaw] = mMatch;
@@ -277,9 +234,9 @@
            addRel(relations, rawRetClass, 'solid', mName);
         }
 
-        // 内部コード解析
+        // 内部解析
         const endIdx = mMatch.index + mMatch[0].length;
-        const mBody = extractBlock(body, endIdx); // extractBlockは汎用なのでここでも使える
+        const mBody = extractBlock(body, endIdx);
         
         if (mBody) {
            processedClasses.forEach(target => {
@@ -287,7 +244,6 @@
              
              if (new RegExp(`new\\s+${target}\\s*\\(`).test(mBody)) {
                addRel(relations, target, 'solid', `new ${mName}`);
-               // newがあるなら単なるreturnとしての表示は消す
                removeRel(relations, target, 'solid', mName);
              }
              else if (new RegExp(`\\b${target}\\s*\\.\\w+`).test(mBody)) {
@@ -306,7 +262,6 @@
           mermaidDef += `  ${owner} --> ${target} : ${Array.from(types.solid).join(', ')}\n`;
         }
         
-        // 重複除去 (solidにあるものはdashedから消す)
         types.dashed.forEach(label => {
             const rawLabel = label.replace('call ', '').replace('new ', '');
             let isDuplicated = false;
@@ -325,7 +280,6 @@
 
   // --- Helpers ---
 
-  // { の位置から対応する } の位置を探してインデックスを返す
   function findBlockEnd(text, openIndex) {
     let depth = 1;
     let i = openIndex + 1;
@@ -337,7 +291,6 @@
     return i - 1;
   }
 
-  // ブロックの中身だけを抽出
   function extractBlock(text, start) {
     const openIndex = text.indexOf('{', start);
     if (openIndex === -1) return null;
