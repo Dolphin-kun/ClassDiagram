@@ -3,47 +3,70 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>C# → Mermaid Visualizer (Save & Arrow Fix)</title>
+  <title>C# Repo → Mermaid Visualizer</title>
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
-    mermaid.initialize({ startOnLoad: false });
+    mermaid.initialize({ startOnLoad: false, maxTextSize: 900000 }); // 大規模な図用に上限緩和
     window.mermaid = mermaid;
   </script>
   <style>
-    body { font-family: "Segoe UI", sans-serif; padding: 20px; background: #f4f6f8; color: #333; }
-    textarea { width: 100%; height: 120px; padding: 10px; font-family: Consolas, monospace; border-radius: 6px; border: 1px solid #ccc; }
+    body { font-family: "Segoe UI", sans-serif; padding: 20px; background: #f4f6f8; color: #333; max-width: 1200px; margin: 0 auto; }
+    
+    /* GitHub Inputs */
+    .gh-panel { background: #24292e; color: white; padding: 15px; border-radius: 6px; margin-bottom: 20px; }
+    .gh-inputs { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+    .gh-input { flex: 1; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #fafafa; min-width: 200px; }
+    .btn-gh { background: #2ea44f; color: white; border: none; padding: 8px 16px; border-radius: 4px; font-weight: bold; cursor: pointer; }
+    .btn-gh:hover { background: #2c974b; }
+    .gh-note { font-size: 0.8rem; color: #ccc; }
+
+    textarea { width: 100%; height: 80px; padding: 10px; font-family: Consolas, monospace; border-radius: 6px; border: 1px solid #ccc; }
     
     .controls { margin: 10px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     
-    /* ボタンのデザイン */
+    /* Buttons */
     button { padding: 8px 16px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; transition: background 0.2s; color: white; }
-    .btn-add { background: #007bff; }
-    .btn-add:hover { background: #0056b3; }
-    .btn-save { background: #28a745; } /* 緑色 */
-    .btn-save:hover { background: #218838; }
-    .btn-reset { background: #dc3545; }
-    .btn-reset:hover { background: #c82333; }
+    .btn-add { background: #007bff; } .btn-add:hover { background: #0056b3; }
+    .btn-save { background: #28a745; } .btn-save:hover { background: #218838; }
+    .btn-reset { background: #dc3545; } .btn-reset:hover { background: #c82333; }
 
-    .status-msg { font-size: 0.9rem; color: #28a745; display: none; margin-left: 10px; font-weight: bold;}
+    .status-msg { font-size: 0.9rem; font-weight: bold; margin-left: 10px; }
+    .status-success { color: #28a745; }
+    .status-loading { color: #e6a700; }
+    .status-error { color: #dc3545; }
     
     .legend { font-size: 0.85rem; margin-left: auto; color: #555; display: flex; gap: 10px; }
     .legend span { display: flex; align-items: center; gap: 4px; }
     
-    #diagramContainer { background: #fff; padding: 20px; border-radius: 8px; min-height: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); overflow: auto; }
+    #diagramContainer { background: #fff; padding: 20px; border-radius: 8px; min-height: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); overflow: auto; position: relative; }
   </style>
 </head>
 <body>
 
-  <h1>C# → Mermaid Visualizer (保存機能付き)</h1>
-  <p>コード解析に加え、継承関係の検知とデータのブラウザ保存に対応しました。</p>
-  
+  <h1>C# Repo → Mermaid Visualizer</h1>
+
+  <div class="gh-panel">
+    <h3>GitHubリポジトリからインポート</h3>
+    <div class="gh-inputs">
+      <input type="text" id="repoUrl" class="gh-input" placeholder="https://github.com/user/repo" />
+      <input type="password" id="ghToken" class="gh-input" placeholder="GitHub Token (任意/制限回避用)" />
+      <button onclick="fetchFromGitHub()" class="btn-gh">🚀 リポジトリ読込</button>
+    </div>
+    <div class="gh-note">
+      ※ トークンなしだと1時間60回制限です。Privateリポジトリや大規模な読込にはトークンが必要です。<br>
+      ※ 読み込み対象はメインブランチのすべての .cs ファイルです。
+    </div>
+    <div id="ghStatus" class="status-msg"></div>
+  </div>
+
+  <p>手動追加エリア</p>
   <textarea id="codeInput" placeholder="// C#コードを貼り付け"></textarea>
   
   <div class="controls">
     <button onclick="addCode()" class="btn-add">解析して追加</button>
     <button onclick="saveToStorage()" class="btn-save">💾 保持 (Save)</button>
     <button onclick="resetAll()" class="btn-reset">全リセット</button>
-    <span id="statusMsg" class="status-msg">保存しました！</span>
+    <span id="saveStatus" class="status-msg status-success" style="display:none">保存しました！</span>
     
     <div class="legend">
       <span><b>━━▷</b> new/return (実線)</span>
@@ -59,7 +82,6 @@
 
   let fullSourceCode = "";
 
-  // ページ読み込み時に保存されたデータを復元
   window.addEventListener('load', async () => {
     const savedCode = localStorage.getItem('mermaid_csharp_viz');
     if (savedCode) {
@@ -67,6 +89,99 @@
       await analyzeAndRender(fullSourceCode);
     }
   });
+
+  // --- GitHub Fetch Logic ---
+  window.fetchFromGitHub = async function() {
+    const urlInput = document.getElementById('repoUrl').value.trim();
+    const token = document.getElementById('ghToken').value.trim();
+    const statusEl = document.getElementById('ghStatus');
+
+    if (!urlInput) {
+      statusEl.textContent = "URLを入力してください";
+      statusEl.className = "status-msg status-error";
+      return;
+    }
+
+    // URLパース (user/repo を抽出)
+    const match = urlInput.match(/github\.com\/([^\/]+\/[^\/]+)/);
+    const repoPath = match ? match[1] : urlInput; // そのまま user/repo と入力された場合も対応
+
+    statusEl.textContent = "リポジトリ情報を取得中...";
+    statusEl.className = "status-msg status-loading";
+
+    const headers = { 'Accept': 'application/vnd.github.v3+json' };
+    if (token) headers['Authorization'] = `token ${token}`;
+
+    try {
+      // 1. デフォルトブランチを取得
+      const repoRes = await fetch(`https://api.github.com/repos/${repoPath}`, { headers });
+      if (!repoRes.ok) throw new Error("リポジトリが見つかりません: " + repoRes.statusText);
+      const repoData = await repoRes.json();
+      const defaultBranch = repoData.default_branch;
+
+      // 2. ツリーを再帰的に取得 (全ファイルパス取得)
+      statusEl.textContent = `ファイルリストを取得中 (${defaultBranch})...`;
+      const treeRes = await fetch(`https://api.github.com/repos/${repoPath}/git/trees/${defaultBranch}?recursive=1`, { headers });
+      if (!treeRes.ok) throw new Error("ファイルリスト取得失敗: " + treeRes.statusText);
+      const treeData = await treeRes.json();
+
+      // 3. .csファイルのみフィルタリング
+      const csFiles = treeData.tree.filter(node => node.path.endsWith('.cs') && node.type === 'blob');
+      
+      if (csFiles.length === 0) {
+        throw new Error(".csファイルが見つかりませんでした。");
+      }
+      if (csFiles.length > 50 && !confirm(`${csFiles.length}個のファイルが見つかりました。すべて読み込みますか？(API制限に注意)`)) {
+        statusEl.textContent = "キャンセルされました";
+        statusEl.className = "status-msg status-error";
+        return;
+      }
+
+      // 4. 並列でファイルの中身を取得
+      statusEl.textContent = `${csFiles.length}個のファイルをダウンロード中...`;
+      
+      let fetchedCount = 0;
+      const fetchPromises = csFiles.map(async file => {
+        // raw_urlがあればそれを使う、なければAPI経由(Base64デコード必要だが、ここではraw.githubusercontentを使うのが手っ取り早い)
+        // Privateリポジトリの場合はAPI経由でcontentを取得する必要があります
+        let content = "";
+        
+        if (token) {
+            // Private対応: APIでBlobを取得
+            const blobRes = await fetch(file.url, { headers });
+            const blobData = await blobRes.json();
+            // Base64デコード (日本語文字化け対策)
+            content = decodeURIComponent(escape(window.atob(blobData.content.replace(/\s/g, ''))));
+        } else {
+            // PublicかつTokenなし: raw.githubusercontent.com
+            const rawUrl = `https://raw.githubusercontent.com/${repoPath}/${defaultBranch}/${file.path}`;
+            const res = await fetch(rawUrl);
+            content = await res.text();
+        }
+        fetchedCount++;
+        statusEl.textContent = `ダウンロード中: ${fetchedCount}/${csFiles.length}`;
+        return `// File: ${file.path}\n${content}\n`;
+      });
+
+      const contents = await Promise.all(fetchPromises);
+      
+      // 既存コードに追加
+      fullSourceCode += "\n" + contents.join("\n");
+      
+      statusEl.textContent = "解析中...";
+      await analyzeAndRender(fullSourceCode);
+      
+      statusEl.textContent = `完了: ${csFiles.length}ファイルを読み込みました`;
+      statusEl.className = "status-msg status-success";
+
+    } catch (err) {
+      console.error(err);
+      statusEl.textContent = "エラー: " + err.message;
+      statusEl.className = "status-msg status-error";
+    }
+  };
+
+  // --- Existing Logic (Same as before) ---
 
   window.addCode = async function() {
     const input = document.getElementById('codeInput');
@@ -76,10 +191,9 @@
     input.value = "";
   };
 
-  // 保持（保存）機能
   window.saveToStorage = function() {
     localStorage.setItem('mermaid_csharp_viz', fullSourceCode);
-    const msg = document.getElementById('statusMsg');
+    const msg = document.getElementById('saveStatus');
     msg.style.display = 'inline';
     setTimeout(() => { msg.style.display = 'none'; }, 2000);
   };
@@ -89,6 +203,7 @@
     fullSourceCode = "";
     localStorage.removeItem('mermaid_csharp_viz');
     document.getElementById('diagramContainer').innerHTML = "";
+    document.getElementById('ghStatus').textContent = "";
   };
 
   async function analyzeAndRender(source) {
@@ -101,26 +216,22 @@
     }
 
     let mermaidDef = "classDiagram\n";
+    // Mermaidのディレクティブを追加してレンダリング調整
+    mermaidDef += "%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '12px'}}}%%\n";
 
-    // クラス定義 & スタイル
     classes.forEach(cls => {
       mermaidDef += `  class ${cls}\n`;
       if (cls.match(/Manager|Controller|Service/)) mermaidDef += `  style ${cls} fill:#e3f2fd,stroke:#1565c0,stroke-width:2px\n`;
       else if (cls.match(/Config|Data|Model|Body|World/)) mermaidDef += `  style ${cls} fill:#fff9c4,stroke:#fbc02d,stroke-width:2px\n`;
     });
 
-    // --- 継承関係の解析 (class A : B) ---
-    // Regex: class Child : Parent
     const inheritanceRegex = /public\s+(?:static\s+)?class\s+(\w+)\s*:\s*([\w, ]+)/g;
     let iMatch;
     while ((iMatch = inheritanceRegex.exec(cleanSource)) !== null) {
       const child = iMatch[1];
       const parentsRaw = iMatch[2];
       const parents = parentsRaw.split(',').map(p => p.trim());
-      
       parents.forEach(parent => {
-        // ジェネリックやインターフェースを除外し、既知のクラスのみ継承線を引く
-        // もしインターフェースも含めたい場合はここを調整
         const safeParent = parent.split('<')[0]; 
         if (classes.has(safeParent)) {
           mermaidDef += `  ${safeParent} <|-- ${child}\n`;
@@ -129,12 +240,10 @@
     }
 
     const classBlocks = extractClassBlocks(cleanSource);
-
     classBlocks.forEach(block => {
       const owner = block.className;
       if (!classes.has(owner)) return;
 
-      // プロパティ
       const propRegex = /public\s+(?:static\s+)?(?:readonly\s+)?([\w<>, \?\[\]]+)\s+(\w+)\s*(?:\{|=>)/g;
       let pMatch;
       while ((pMatch = propRegex.exec(block.body)) !== null) {
@@ -142,47 +251,34 @@
         mermaidDef += `  ${owner} : +${formatType(pMatch[1])} ${pMatch[2]}\n`;
       }
 
-      // メソッド解析 & 依存マップ構築
       const methodRegex = /public\s+(?:static\s+)?([\w<>, \?\[\]]+)\s+(\w+)\s*\(([^)]*)\)/g;
       let mMatch;
-      
-      // Arrow TypeごとのラベルSetを管理
-      // solid: --> (new, return)
-      // dashed: ..> (use, static)
-      const relations = new Map(); // Key: TargetClass, Value: { solid: Set, dashed: Set }
+      const relations = new Map();
 
       while ((mMatch = methodRegex.exec(block.body)) !== null) {
         const [_, retRaw, mName, argsRaw] = mMatch;
         const dRet = formatType(retRaw);
         const dArgs = formatArgs(argsRaw);
-        
         mermaidDef += `  ${owner} : +${mName}(${dArgs}) ${dRet}\n`;
 
-        // 戻り値 -> Solid
         const rawRetClass = retRaw.split('<')[0].trim().replace('[]','');
         if (classes.has(rawRetClass) && rawRetClass !== owner) {
-           addRel(relations, rawRetClass, 'solid', mName); // メソッド名をラベルにする
+            addRel(relations, rawRetClass, 'solid', mName);
         }
 
-        // 内部解析
         const endIdx = mMatch.index + mMatch[0].length;
         const body = extractBlock(block.body, endIdx);
         
         if (body) {
            classes.forEach(target => {
              if (target === owner) return;
-             
-             // new -> Solid (prefix: new)
              if (new RegExp(`new\\s+${target}\\s*\\(`).test(body)) {
                addRel(relations, target, 'solid', `new ${mName}`);
-               // 重複回避: newがあるなら単なる戻り値としての表示は消す
                removeRel(relations, target, 'solid', mName);
              }
-             // Static call -> Dashed (prefix: call)
              else if (new RegExp(`\\b${target}\\s*\\.\\w+`).test(body)) {
                addRel(relations, target, 'dashed', `call ${mName}`);
              }
-             // Use -> Dashed
              else if (new RegExp(`\\b${target}\\b`).test(body)) {
                addRel(relations, target, 'dashed', mName);
              }
@@ -190,25 +286,16 @@
         }
       }
 
-      // 描画
       relations.forEach((types, target) => {
-        // 実線 (-->) : new, return
         if (types.solid.size > 0) {
           mermaidDef += `  ${owner} --> ${target} : ${Array.from(types.solid).join(', ')}\n`;
         }
-        
-        // 点線 (..>) : use, static
-        // 実線で既に言及されているメソッドが点線に含まれる場合は削除する（重複整理）
         types.dashed.forEach(label => {
-            // "new Method" と "Method" のような重複をチェック
             const rawLabel = label.replace('call ', '').replace('new ', '');
             let isDuplicated = false;
-            types.solid.forEach(s => {
-                if(s.includes(rawLabel)) isDuplicated = true;
-            });
+            types.solid.forEach(s => { if(s.includes(rawLabel)) isDuplicated = true; });
             if(isDuplicated) types.dashed.delete(label);
         });
-
         if (types.dashed.size > 0) {
           mermaidDef += `  ${owner} ..> ${target} : ${Array.from(types.dashed).join(', ')}\n`;
         }
@@ -222,22 +309,18 @@
     if (!map.has(target)) map.set(target, { solid: new Set(), dashed: new Set() });
     map.get(target)[type].add(label);
   }
-
   function removeRel(map, target, type, label) {
     if (map.has(target)) map.get(target)[type].delete(label);
   }
-
   function formatType(raw) {
     if (!raw) return "";
     let safe = raw.trim().replace(/\b(readonly|volatile|virtual|override)\b/g, '').trim();
     return escapeGenerics(safe);
   }
-
   function formatArgs(raw) {
     if (!raw) return "";
     return escapeGenerics(raw, true);
   }
-
   function escapeGenerics(str, isArgList = false) {
     let result = "";
     let depth = 0;
@@ -252,7 +335,6 @@
     }
     return result;
   }
-
   function extractClassBlocks(src) {
     const blocks = [];
     const regex = /public\s+(?:static\s+)?class\s+(\w+)/g;
@@ -263,7 +345,6 @@
     }
     return blocks;
   }
-  
   function extractBlock(text, start) {
     let open = text.indexOf('{', start);
     if(open === -1) return null;
@@ -275,7 +356,6 @@
     }
     return text.substring(open + 1, i - 1);
   }
-
   function removeComments(str) {
     return str.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1');
   }
@@ -286,7 +366,7 @@
     try { await mermaid.run({ nodes: [document.querySelector('#mermaidTarget')] }); } 
     catch(e) { 
       console.error(e);
-      container.innerHTML = `<p style="color:red">Syntax Error</p><textarea style="width:100%;height:300px;">${def}</textarea>`;
+      container.innerHTML = `<p style="color:red">Syntax Error or Too Complex</p><textarea style="width:100%;height:300px;">${def}</textarea>`;
     }
   }
 </script>
