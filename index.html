@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>C# → Mermaid Viz (Fixed Namespace)</title>
+  <title>C# → Mermaid Viz (Final Fix)</title>
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
     mermaid.initialize({ startOnLoad: false });
@@ -12,29 +12,19 @@
   <style>
     body { font-family: "Segoe UI", sans-serif; padding: 20px; background: #f4f6f8; color: #333; }
     textarea { width: 100%; height: 120px; padding: 10px; font-family: Consolas, monospace; border-radius: 6px; border: 1px solid #ccc; }
-    
     .controls { margin: 10px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    
     button { padding: 8px 16px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; transition: background 0.2s; color: white; }
     .btn-add { background: #007bff; }
     .btn-add:hover { background: #0056b3; }
     .btn-save { background: #28a745; } 
-    .btn-save:hover { background: #218838; }
     .btn-reset { background: #dc3545; }
-    .btn-reset:hover { background: #c82333; }
-
-    .status-msg { font-size: 0.9rem; color: #28a745; display: none; margin-left: 10px; font-weight: bold;}
-    
-    .legend { font-size: 0.85rem; margin-left: auto; color: #555; display: flex; gap: 10px; }
-    .legend span { display: flex; align-items: center; gap: 4px; }
-    
     #diagramContainer { background: #fff; padding: 20px; border-radius: 8px; min-height: 500px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); overflow: auto; }
   </style>
 </head>
 <body>
 
-  <h1>C# → Mermaid Visualizer (Namespace修正版)</h1>
-  <p>Namespaceの解析ロジックを修正し、クラスが正しく表示されるようにしました。</p>
+  <h1>C# → Mermaid Visualizer (決定版)</h1>
+  <p>Namespace解析バグを修正し、クラス内にメンバーを格納する形式で出力します。</p>
   
   <textarea id="codeInput" placeholder="// C#コードを貼り付け"></textarea>
   
@@ -42,13 +32,7 @@
     <button onclick="addCode()" class="btn-add">解析して追加</button>
     <button onclick="saveToStorage()" class="btn-save">💾 保持 (Save)</button>
     <button onclick="resetAll()" class="btn-reset">全リセット</button>
-    <span id="statusMsg" class="status-msg">保存しました！</span>
-    
-    <div class="legend">
-      <span><b>━━▷</b> new (生成)</span>
-      <span><b>- - ▷</b> use (依存)</span>
-      <span><b>──▷</b> 継承</span>
-    </div>
+    <span id="statusMsg" style="display:none; color:#28a745; font-weight:bold; margin-left:10px;">保存しました！</span>
   </div>
 
   <div id="diagramContainer"></div>
@@ -59,7 +43,7 @@
   let fullSourceCode = "";
 
   window.addEventListener('load', async () => {
-    const savedCode = localStorage.getItem('mermaid_csharp_viz_ns');
+    const savedCode = localStorage.getItem('mermaid_csharp_viz_final');
     if (savedCode) {
       fullSourceCode = savedCode;
       await analyzeAndRender(fullSourceCode);
@@ -75,210 +59,242 @@
   };
 
   window.saveToStorage = function() {
-    localStorage.setItem('mermaid_csharp_viz_ns', fullSourceCode);
+    localStorage.setItem('mermaid_csharp_viz_final', fullSourceCode);
     const msg = document.getElementById('statusMsg');
     msg.style.display = 'inline';
     setTimeout(() => { msg.style.display = 'none'; }, 2000);
   };
 
   window.resetAll = async function() {
-    if(!confirm("現在の図と保存データをすべて消去しますか？")) return;
+    if(!confirm("リセットしますか？")) return;
     fullSourceCode = "";
-    localStorage.removeItem('mermaid_csharp_viz_ns');
+    localStorage.removeItem('mermaid_csharp_viz_final');
     document.getElementById('diagramContainer').innerHTML = "";
   };
 
   async function analyzeAndRender(source) {
-    // コメント削除
     let cleanSource = removeComments(source);
     
-    const processedClasses = new Set();
-    const namespaceMap = new Map();
-    namespaceMap.set("Global", []); 
+    // データ構造: { namespace, className, members: [], relations: [], style: "", parent: "" }
+    const parsedClasses = [];
+    const processedClassNames = new Set();
+    
+    // Namespaceマップ
+    const namespaceBlocks = new Map();
+    namespaceBlocks.set("Global", []);
 
-    // --- Namespace抽出ロジック（修正版） ---
+    // 1. Namespace抽出 (バグ修正済み)
     let cursor = 0;
     while (cursor < cleanSource.length) {
       const nsIndex = cleanSource.indexOf("namespace ", cursor);
-      if (nsIndex === -1) break; 
+      if (nsIndex === -1) break;
 
       const openBraceIndex = cleanSource.indexOf("{", nsIndex);
       const semiColonIndex = cleanSource.indexOf(";", nsIndex);
       
-      // ファイルスコープ namespace X; の簡易判定
+      // ファイルスコープ判定
       if (semiColonIndex !== -1 && (openBraceIndex === -1 || semiColonIndex < openBraceIndex)) {
          cursor = semiColonIndex + 1; 
-         continue;
+         continue; 
       }
 
       if (openBraceIndex !== -1) {
-        // 名前取得
         const nsName = cleanSource.substring(nsIndex + 10, openBraceIndex).trim();
         
-        // 【修正点】findBlockEndを使って正確な範囲を取得
+        // 【重要】前回バグ修正箇所: openBraceIndexをそのまま渡す
         const blockEnd = findBlockEnd(cleanSource, openBraceIndex);
         
         if (blockEnd !== -1) {
-           // { と } の間の文字列を取得（これがNamespaceの中身）
+           // { の次から } の前まで
            const body = cleanSource.substring(openBraceIndex + 1, blockEnd);
-           
-           if (!namespaceMap.has(nsName)) namespaceMap.set(nsName, []);
-           namespaceMap.get(nsName).push(body);
+           if (!namespaceBlocks.has(nsName)) namespaceBlocks.set(nsName, []);
+           namespaceBlocks.get(nsName).push(body);
 
-           // 抽出した部分を元文字列から消す（空白で埋めてインデックスずれを防ぐ）
-           const blockStart = nsIndex; 
+           // 抽出部分を空白置換
+           const blockStart = nsIndex;
            const padding = " ".repeat(blockEnd - blockStart + 1);
-           
-           const before = cleanSource.substring(0, blockStart);
-           const after = cleanSource.substring(blockEnd + 1);
-           cleanSource = before + padding + after;
-           
+           cleanSource = cleanSource.substring(0, blockStart) + padding + cleanSource.substring(blockEnd + 1);
            cursor = blockEnd + 1;
         } else {
-           // 閉じ括弧が見つからない場合など
            cursor = openBraceIndex + 1;
         }
       } else {
         cursor = nsIndex + 9;
       }
     }
+    namespaceBlocks.get("Global").push(cleanSource);
 
-    // 残りはGlobal
-    namespaceMap.get("Global").push(cleanSource);
-
-    let mermaidDef = "classDiagram\n";
-    const allClassBlocks = [];
-
-    // --- 各Namespace解析 ---
-    for (const [nsName, codeBlocks] of namespaceMap) {
-      if (codeBlocks.join("").trim() === "") continue;
-
-      let nsDef = "";
-      
-      codeBlocks.forEach(code => {
-        const regex = /public\s+(?:static\s+)?class\s+(\w+)(?:\s*:\s*([\w, ]+))?/g;
+    // 2. クラス解析
+    for (const [nsName, blocks] of namespaceBlocks) {
+      blocks.forEach(code => {
+        const classRegex = /public\s+(?:static\s+)?class\s+(\w+)(?:\s*:\s*([\w, ]+))?/g;
         let match;
-        while ((match = regex.exec(code)) !== null) {
+        while ((match = classRegex.exec(code)) !== null) {
           const className = match[1];
+          if (processedClassNames.has(className)) continue;
+          processedClassNames.add(className);
+
           const inheritanceRaw = match[2];
-
-          if (processedClasses.has(className)) continue;
-          processedClasses.add(className);
-
-          nsDef += `    class ${className}\n`;
+          const classBodyBlock = extractBlock(code, match.index + match[0].length);
           
-          if (className.match(/Manager|Controller|Service/)) nsDef += `    style ${className} fill:#e3f2fd,stroke:#1565c0,stroke-width:2px\n`;
-          else if (className.match(/Config|Data|Model|Body|World/)) nsDef += `    style ${className} fill:#fff9c4,stroke:#fbc02d,stroke-width:2px\n`;
+          const classData = {
+            namespace: nsName,
+            className: className,
+            members: [],
+            relations: [], // { target, type, label }
+            parent: null
+          };
 
+          // スタイル決定
+          if (className.match(/Manager|Controller|Service/)) classData.style = "fill:#e3f2fd,stroke:#1565c0,stroke-width:2px";
+          else if (className.match(/Config|Data|Model|Body|World/)) classData.style = "fill:#fff9c4,stroke:#fbc02d,stroke-width:2px";
+
+          // 継承
           if (inheritanceRaw) {
-             const parents = inheritanceRaw.split(',').map(p => p.trim().split('<')[0]);
-             parents.forEach(p => {
-               allClassBlocks.push({ type:'inheritance', child: className, parent: p });
-             });
+            // 最初の1つだけ親として扱う（多重継承不可のC#前提）
+            classData.parent = inheritanceRaw.split(',')[0].trim().split('<')[0];
           }
 
-          const body = extractBlock(code, match.index + match[0].length);
-          if (body) {
-            allClassBlocks.push({ type:'class', className, body });
+          // メンバー解析
+          if (classBodyBlock) {
+             parseMembers(classBodyBlock, classData);
           }
+          
+          parsedClasses.push(classData);
         }
       });
-
-      if (nsDef.trim() !== "") {
-        if (nsName !== "Global") {
-          mermaidDef += `  subgraph "${nsName}"\n`;
-          mermaidDef += `    direction TB\n`;
-          mermaidDef += nsDef;
-          mermaidDef += `  end\n`;
-        } else {
-          mermaidDef += nsDef;
-        }
-      }
     }
 
-    // --- 詳細解析 ---
-    allClassBlocks.forEach(item => {
-      if (item.type === 'inheritance') {
-         if (processedClasses.has(item.parent)) {
-            mermaidDef += `  ${item.parent} <|-- ${item.child}\n`;
-         }
-         return;
+    // 3. リレーション解析 (全クラス収集後に実施)
+    // ※今回は parseMembers 内でテキストベースで依存を抽出済みとするが、
+    // 正確な重複排除のためにはクラス名セットが必要。
+    // parseMembers関数内で processedClassNames を参照できないため、ここでフィルタリングする手もあるが
+    // 簡易化のため parseMembers で抽出した候補を有効なクラスのみに絞る。
+
+    // 4. Mermaid生成
+    let def = "classDiagram\n";
+
+    // Namespaceごとのグループ化
+    const nsGroups = new Map();
+    parsedClasses.forEach(c => {
+      if (!nsGroups.has(c.namespace)) nsGroups.set(c.namespace, []);
+      nsGroups.get(c.namespace).push(c);
+    });
+
+    for (const [ns, classes] of nsGroups) {
+      const isSub = (ns !== "Global");
+      if (isSub) {
+        def += `  subgraph "${ns}"\n    direction TB\n`;
       }
-
-      const owner = item.className;
-      const body = item.body;
-
-      // プロパティ
-      const propRegex = /public\s+(?:static\s+)?(?:readonly\s+)?([\w<>, \?\[\]]+)\s+(\w+)\s*(?:\{|=>)/g;
-      let pMatch;
-      while ((pMatch = propRegex.exec(body)) !== null) {
-        if (pMatch[1].includes("class ")) continue; 
-        mermaidDef += `  ${owner} : +${formatType(pMatch[1])} ${pMatch[2]}\n`;
-      }
-
-      // メソッド
-      const methodRegex = /public\s+(?:static\s+)?([\w<>, \?\[\]]+)\s+(\w+)\s*\(([^)]*)\)/g;
-      let mMatch;
-      const relations = new Map(); 
-
-      while ((mMatch = methodRegex.exec(body)) !== null) {
-        const [_, retRaw, mName, argsRaw] = mMatch;
-        const dRet = formatType(retRaw);
-        const dArgs = formatArgs(argsRaw);
-        
-        mermaidDef += `  ${owner} : +${mName}(${dArgs}) ${dRet}\n`;
-
-        // 戻り値
-        const rawRetClass = retRaw.split('<')[0].trim().replace('[]','');
-        if (processedClasses.has(rawRetClass) && rawRetClass !== owner) {
-           addRel(relations, rawRetClass, 'solid', mName);
-        }
-
-        // 内部解析
-        const endIdx = mMatch.index + mMatch[0].length;
-        const mBody = extractBlock(body, endIdx);
-        
-        if (mBody) {
-           processedClasses.forEach(target => {
-             if (target === owner) return;
-             
-             if (new RegExp(`new\\s+${target}\\s*\\(`).test(mBody)) {
-               addRel(relations, target, 'solid', `new ${mName}`);
-               removeRel(relations, target, 'solid', mName);
-             }
-             else if (new RegExp(`\\b${target}\\s*\\.\\w+`).test(mBody)) {
-               addRel(relations, target, 'dashed', `call ${mName}`);
-             }
-             else if (new RegExp(`\\b${target}\\b`).test(mBody)) {
-               addRel(relations, target, 'dashed', mName);
-             }
-           });
-        }
-      }
-
-      // 描画
-      relations.forEach((types, target) => {
-        if (types.solid.size > 0) {
-          mermaidDef += `  ${owner} --> ${target} : ${Array.from(types.solid).join(', ')}\n`;
-        }
-        
-        types.dashed.forEach(label => {
-            const rawLabel = label.replace('call ', '').replace('new ', '');
-            let isDuplicated = false;
-            types.solid.forEach(s => { if(s.includes(rawLabel)) isDuplicated = true; });
-            if(isDuplicated) types.dashed.delete(label);
+      
+      classes.forEach(c => {
+        // クラス定義開始 (ブラケット記法)
+        def += `    class ${c.className} {\n`;
+        c.members.forEach(m => {
+          def += `      ${m}\n`;
         });
+        def += `    }\n`;
+        if (c.style) def += `    style ${c.className} ${c.style}\n`;
+      });
 
-        if (types.dashed.size > 0) {
-          mermaidDef += `  ${owner} ..> ${target} : ${Array.from(types.dashed).join(', ')}\n`;
+      if (isSub) def += `  end\n`;
+    }
+
+    // 関係性の描画 (subgraphの外に書く)
+    parsedClasses.forEach(c => {
+      // 継承
+      if (c.parent && processedClassNames.has(c.parent)) {
+        def += `  ${c.parent} <|-- ${c.className}\n`;
+      }
+
+      // 依存関係の整理
+      // Map<Target, { new: [], use: [], return: [] }>
+      const relMap = new Map();
+      c.relations.forEach(r => {
+        if (!processedClassNames.has(r.target) || r.target === c.className) return;
+        if (!relMap.has(r.target)) relMap.set(r.target, { new: new Set(), use: new Set(), return: new Set() });
+        relMap.get(r.target)[r.type].add(r.label);
+      });
+
+      relMap.forEach((types, target) => {
+        // 重複除去
+        types.new.forEach(l => { types.return.delete(l); types.use.delete(l); });
+        
+        // new (実線)
+        if (types.new.size > 0) {
+           def += `  ${c.className} --> ${target} : new ${Array.from(types.new).join(', ')}\n`;
+        }
+        // return
+        if (types.return.size > 0) {
+           // メソッド名リストを表示
+           def += `  ${c.className} --> ${target} : ${Array.from(types.return).join(', ')}\n`;
+        }
+        // use (点線)
+        const uses = [];
+        types.use.forEach(l => uses.push(l));
+        if (uses.length > 0) {
+           def += `  ${c.className} ..> ${target} : ${uses.join(', ')}\n`;
         }
       });
     });
 
-    await renderMermaid(mermaidDef);
+    await renderMermaid(def);
   }
 
-  // --- Helpers ---
+  // --- 解析ロジック ---
+
+  function parseMembers(body, classData) {
+    // プロパティ
+    const pRegex = /public\s+(?:static\s+)?(?:readonly\s+)?([\w<>, \?\[\]]+)\s+(\w+)\s*(?:\{|=>)/g;
+    let pm;
+    while ((pm = pRegex.exec(body)) !== null) {
+      if (pm[1].includes("class ")) continue;
+      classData.members.push(`+${formatType(pm[1])} ${pm[2]}`);
+    }
+
+    // メソッド
+    const mRegex = /public\s+(?:static\s+)?([\w<>, \?\[\]]+)\s+(\w+)\s*\(([^)]*)\)/g;
+    let mm;
+    while ((mm = mRegex.exec(body)) !== null) {
+      const retType = formatType(mm[1]);
+      const mName = mm[2];
+      const args = formatArgs(mm[3]);
+      classData.members.push(`+${mName}(${args}) ${retType}`);
+
+      // 戻り値依存
+      const rawRet = mm[1].split('<')[0].trim().replace('[]','');
+      classData.relations.push({ target: rawRet, type: 'return', label: mName });
+
+      // 内部依存解析
+      const endIdx = mm.index + mm[0].length;
+      const mBody = extractBlock(body, endIdx);
+      if (mBody) {
+        // 簡易的に全単語をスキャンして依存を探すのは重いので、
+        // ここでは「既知のクラス」リストがないため、
+        // 「大文字始まりの単語」をターゲット候補として抽出する戦略もあるが、
+        // 精度のため Regex で new/static パターンを探す
+        
+        // new ClassName
+        const newMatches = [...mBody.matchAll(/new\s+(\w+)\s*\(/g)];
+        newMatches.forEach(m => classData.relations.push({ target: m[1], type: 'new', label: mName }));
+
+        // Static: ClassName.Method
+        const statMatches = [...mBody.matchAll(/(\w+)\s*\.\w+/g)];
+        statMatches.forEach(m => {
+           if(m[1] !== "Math" && m[1] !== "Debug" && m[1] !== "Console") // 除外例
+             classData.relations.push({ target: m[1], type: 'use', label: `call ${mName}` });
+        });
+        
+        // Use: 変数宣言や引数など (簡易)
+        // ここは全クラスリストがないと誤爆が多いので、
+        // レンダリング時(processedClassNames判定時)に弾かれることを前提に
+        // new/static以外の型っぽいものを拾うのは難しい。
+        // なので、今回は「new」と「static call」を確実に拾う方針にする。
+      }
+    }
+  }
+
+  // --- ヘルパー ---
 
   function findBlockEnd(text, openIndex) {
     let depth = 1;
@@ -298,39 +314,22 @@
     return text.substring(openIndex + 1, endIndex);
   }
 
-  function addRel(map, target, type, label) {
-    if (!map.has(target)) map.set(target, { solid: new Set(), dashed: new Set() });
-    map.get(target)[type].add(label);
-  }
-
-  function removeRel(map, target, type, label) {
-    if (map.has(target)) map.get(target)[type].delete(label);
-  }
-
   function formatType(raw) {
-    if (!raw) return "";
     let safe = raw.trim().replace(/\b(readonly|volatile|virtual|override)\b/g, '').trim();
     return escapeGenerics(safe);
   }
-
-  function formatArgs(raw) {
-    if (!raw) return "";
-    return escapeGenerics(raw, true);
-  }
+  function formatArgs(raw) { return escapeGenerics(raw, true); }
 
   function escapeGenerics(str, isArgList = false) {
-    let result = "";
-    let depth = 0;
+    let res = "", depth = 0;
     for (let i = 0; i < str.length; i++) {
-      const char = str[i];
-      if (char === '<') { depth++; result += '~'; }
-      else if (char === '>') { depth--; result += '~'; }
-      else if (char === ',') {
-        if (depth > 0) result += '，'; 
-        else result += isArgList ? ' ' : ' ';
-      } else { result += char; }
+      const c = str[i];
+      if (c === '<') { depth++; res += '~'; }
+      else if (c === '>') { depth--; res += '~'; }
+      else if (c === ',') { res += (depth > 0 ? '，' : (isArgList ? ' ' : ' ')); }
+      else res += c;
     }
-    return result;
+    return res;
   }
 
   function removeComments(str) {
@@ -340,10 +339,10 @@
   async function renderMermaid(def) {
     const container = document.getElementById('diagramContainer');
     container.innerHTML = `<pre class="mermaid" id="mermaidTarget">${def}</pre>`;
-    try { await mermaid.run({ nodes: [document.querySelector('#mermaidTarget')] }); } 
+    try { await mermaid.run({ nodes: [document.querySelector('#mermaidTarget')] }); }
     catch(e) { 
-      console.error(e);
-      container.innerHTML = `<p style="color:red">Syntax Error</p><textarea style="width:100%;height:300px;">${def}</textarea>`;
+        console.error(e); 
+        container.innerHTML = `<p style="color:red">Error</p><textarea style="width:100%;height:300px">${def}</textarea>`; 
     }
   }
 </script>
