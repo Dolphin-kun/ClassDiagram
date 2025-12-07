@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>C# → Mermaid Visualizer (Save & Arrow Fix)</title>
+  <title>C# → Mermaid Viz (Namespace & Unique)</title>
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
     mermaid.initialize({ startOnLoad: false });
@@ -15,11 +15,10 @@
     
     .controls { margin: 10px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     
-    /* ボタンのデザイン */
     button { padding: 8px 16px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; transition: background 0.2s; color: white; }
     .btn-add { background: #007bff; }
     .btn-add:hover { background: #0056b3; }
-    .btn-save { background: #28a745; } /* 緑色 */
+    .btn-save { background: #28a745; } 
     .btn-save:hover { background: #218838; }
     .btn-reset { background: #dc3545; }
     .btn-reset:hover { background: #c82333; }
@@ -29,13 +28,13 @@
     .legend { font-size: 0.85rem; margin-left: auto; color: #555; display: flex; gap: 10px; }
     .legend span { display: flex; align-items: center; gap: 4px; }
     
-    #diagramContainer { background: #fff; padding: 20px; border-radius: 8px; min-height: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); overflow: auto; }
+    #diagramContainer { background: #fff; padding: 20px; border-radius: 8px; min-height: 500px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); overflow: auto; }
   </style>
 </head>
 <body>
 
-  <h1>C# → Mermaid Visualizer (保存機能付き)</h1>
-  <p>コード解析に加え、継承関係の検知とデータのブラウザ保存に対応しました。</p>
+  <h1>C# → Mermaid Visualizer (Namespace対応版)</h1>
+  <p>Namespaceごとのグループ化と、重複クラスの自動除外を行います。</p>
   
   <textarea id="codeInput" placeholder="// C#コードを貼り付け"></textarea>
   
@@ -46,8 +45,8 @@
     <span id="statusMsg" class="status-msg">保存しました！</span>
     
     <div class="legend">
-      <span><b>━━▷</b> new/return (実線)</span>
-      <span><b>- - ▷</b> use (点線)</span>
+      <span><b>━━▷</b> new (生成)</span>
+      <span><b>- - ▷</b> use (依存)</span>
       <span><b>──▷</b> 継承</span>
     </div>
   </div>
@@ -59,9 +58,8 @@
 
   let fullSourceCode = "";
 
-  // ページ読み込み時に保存されたデータを復元
   window.addEventListener('load', async () => {
-    const savedCode = localStorage.getItem('mermaid_csharp_viz');
+    const savedCode = localStorage.getItem('mermaid_csharp_viz_ns');
     if (savedCode) {
       fullSourceCode = savedCode;
       await analyzeAndRender(fullSourceCode);
@@ -76,9 +74,8 @@
     input.value = "";
   };
 
-  // 保持（保存）機能
   window.saveToStorage = function() {
-    localStorage.setItem('mermaid_csharp_viz', fullSourceCode);
+    localStorage.setItem('mermaid_csharp_viz_ns', fullSourceCode);
     const msg = document.getElementById('statusMsg');
     msg.style.display = 'inline';
     setTimeout(() => { msg.style.display = 'none'; }, 2000);
@@ -87,103 +84,216 @@
   window.resetAll = async function() {
     if(!confirm("現在の図と保存データをすべて消去しますか？")) return;
     fullSourceCode = "";
-    localStorage.removeItem('mermaid_csharp_viz');
+    localStorage.removeItem('mermaid_csharp_viz_ns');
     document.getElementById('diagramContainer').innerHTML = "";
   };
 
   async function analyzeAndRender(source) {
-    const cleanSource = removeComments(source);
-    const classes = new Set();
-    const classDefRegex = /public\s+(?:static\s+)?class\s+(\w+)/g;
+    let cleanSource = removeComments(source);
+    
+    // クラス名の一意性を保つためのSet（重複防止）
+    const processedClasses = new Set();
+    
+    // Namespaceごとのコードブロックを管理するMap
+    // key: namespace名, value: コード文字列の配列
+    const namespaceMap = new Map();
+    namespaceMap.set("Global", []); // Namespace外のクラス用
+
+    // 1. ブロック形式のNamespaceを抽出 (namespace X { ... })
+    // Regex: namespace Name { body }
+    const nsBlockRegex = /namespace\s+([\w\.]+)\s*/g;
     let match;
-    while ((match = classDefRegex.exec(cleanSource)) !== null) {
-      classes.add(match[1]);
+    
+    // 文字列を走査してNamespaceブロックを切り出す
+    // extractBlockを使うため、Regexループではなく手動で検索位置を進める
+    let cursor = 0;
+    while (cursor < cleanSource.length) {
+      // 次の "namespace" を探す
+      const nsIndex = cleanSource.indexOf("namespace ", cursor);
+      if (nsIndex === -1) break; // もうない
+
+      // namespaceキーワードの後の "{" を探す
+      const openBraceIndex = cleanSource.indexOf("{", nsIndex);
+      const semiColonIndex = cleanSource.indexOf(";", nsIndex);
+      
+      // ファイルスコープ (namespace X;) か ブロック (namespace X { }) か判定
+      // { より先に ; が来たらファイルスコープ（あるいは { がない）
+      if (semiColonIndex !== -1 && (openBraceIndex === -1 || semiColonIndex < openBraceIndex)) {
+         // ファイルスコープ: namespace X;
+         // 本当はこれ以降の全コードが対象だが、簡易的に「ここから末尾まで」をそのNamespace扱いにする
+         // ただし、複数貼り付けに対応するため、このファイルスコープの実装は
+         // 「貼り付け単位」で管理しないと難しい。
+         // 今回は簡易的に「Global」扱いにするか、正規表現で名前だけ取る。
+         // ※複雑化回避のため、今回は { } ブロック形式を優先して処理し、マッチしない部分はGlobalに残す
+         cursor = semiColonIndex + 1; 
+         continue;
+      }
+
+      if (openBraceIndex !== -1) {
+        // 名前を取得
+        const nsName = cleanSource.substring(nsIndex + 10, openBraceIndex).trim();
+        
+        // ブロックの中身を抽出
+        const body = extractBlock(cleanSource, openBraceIndex + 1); // +1修正: {の次から
+        
+        if (body) {
+           if (!namespaceMap.has(nsName)) namespaceMap.set(nsName, []);
+           namespaceMap.get(nsName).push(body);
+
+           // 元の文字列からこのブロックを除去（置換）してGlobalに残らないようにする
+           // ただし位置がずれるので、除去する部分は空白で埋めるか、
+           // 「抽出したものリスト」だけで処理を進める。
+           // ここでは「namespaceMap」に入れた上で、Global解析用に元の文字列から消す（空白化）
+           const fullBlockLength = (cleanSource.indexOf("}", openBraceIndex) - nsIndex) + 1; 
+           // 正確な終了位置を取得するために再計算
+           // extractBlockは中身を返すので、全体長を知るには中身長+2({})+name長などを計算する必要があるが面倒
+           // 簡便法: 抽出済みとしてマークし、Global解析時には使わない
+           
+           // 今回は「抽出した部分を空白に置換」してGlobalに残らないようにする
+           const blockStart = nsIndex;
+           // bodyは中身だけなので、元のテキストでの終了位置を探す必要がある
+           // extractBlockロジックを再利用して終了位置を見つける
+           const blockEnd = findBlockEnd(cleanSource, openBraceIndex);
+           
+           // 置換（文字列操作は不変なので新しい文字列を作る）
+           const before = cleanSource.substring(0, blockStart);
+           const after = cleanSource.substring(blockEnd + 1);
+           // 置換した分、文字数が減るとインデックスが狂うので、同じ長さの空白で埋める
+           const padding = " ".repeat(blockEnd - blockStart + 1);
+           cleanSource = before + padding + after;
+           
+           cursor = blockEnd + 1;
+        } else {
+           cursor = openBraceIndex + 1;
+        }
+      } else {
+        cursor = nsIndex + 9;
+      }
     }
+
+    // 残ったコードはGlobal
+    namespaceMap.get("Global").push(cleanSource);
+
 
     let mermaidDef = "classDiagram\n";
 
-    // クラス定義 & スタイル
-    classes.forEach(cls => {
-      mermaidDef += `  class ${cls}\n`;
-      if (cls.match(/Manager|Controller|Service/)) mermaidDef += `  style ${cls} fill:#e3f2fd,stroke:#1565c0,stroke-width:2px\n`;
-      else if (cls.match(/Config|Data|Model|Body|World/)) mermaidDef += `  style ${cls} fill:#fff9c4,stroke:#fbc02d,stroke-width:2px\n`;
-    });
+    // --- 各Namespaceごとにクラスを解析 ---
+    const allClassBlocks = []; // 後でリレーション解析に使う
 
-    // --- 継承関係の解析 (class A : B) ---
-    // Regex: class Child : Parent
-    const inheritanceRegex = /public\s+(?:static\s+)?class\s+(\w+)\s*:\s*([\w, ]+)/g;
-    let iMatch;
-    while ((iMatch = inheritanceRegex.exec(cleanSource)) !== null) {
-      const child = iMatch[1];
-      const parentsRaw = iMatch[2];
-      const parents = parentsRaw.split(',').map(p => p.trim());
+    // Namespaceの出力順序制御（Globalを最後に回すなど）
+    for (const [nsName, codeBlocks] of namespaceMap) {
+      if (codeBlocks.join("").trim() === "") continue;
+
+      let nsDef = "";
       
-      parents.forEach(parent => {
-        // ジェネリックやインターフェースを除外し、既知のクラスのみ継承線を引く
-        // もしインターフェースも含めたい場合はここを調整
-        const safeParent = parent.split('<')[0]; 
-        if (classes.has(safeParent)) {
-          mermaidDef += `  ${safeParent} <|-- ${child}\n`;
+      codeBlocks.forEach(code => {
+        // クラス定義抽出
+        const regex = /public\s+(?:static\s+)?class\s+(\w+)(?:\s*:\s*([\w, ]+))?/g;
+        let match;
+        while ((match = regex.exec(code)) !== null) {
+          const className = match[1];
+          const inheritanceRaw = match[2];
+
+          // 重複チェック: 既に処理済みのクラスならスキップ
+          if (processedClasses.has(className)) continue;
+          processedClasses.add(className);
+
+          nsDef += `    class ${className}\n`;
+          
+          // スタイル
+          if (className.match(/Manager|Controller|Service/)) nsDef += `    style ${className} fill:#e3f2fd,stroke:#1565c0,stroke-width:2px\n`;
+          else if (className.match(/Config|Data|Model|Body|World/)) nsDef += `    style ${className} fill:#fff9c4,stroke:#fbc02d,stroke-width:2px\n`;
+
+          // 継承関係 (Namespace外のクラスとの関係も考慮するため、ここでは定義だけ追加)
+          if (inheritanceRaw) {
+             const parents = inheritanceRaw.split(',').map(p => p.trim().split('<')[0]);
+             parents.forEach(p => {
+               // 親クラスが存在するかは全解析後じゃないと確定しないが、Mermaidは未定義ノードも描画してくれるのでOK
+               // ただし、subgraph外への線になる可能性があるので、定義はグローバルスコープで行うのが安全
+               // 一旦ここでは配列に保存しておく
+               allClassBlocks.push({ type:'inheritance', child: className, parent: p });
+             });
+          }
+
+          // クラスの中身を抽出して保存（リレーション解析用）
+          const body = extractBlock(code, match.index + match[0].length);
+          if (body) {
+            allClassBlocks.push({ type:'class', className, body });
+          }
         }
       });
+
+      if (nsDef.trim() !== "") {
+        // Global以外はsubgraphで囲む
+        if (nsName !== "Global") {
+          mermaidDef += `  subgraph "${nsName}"\n`;
+          mermaidDef += `    direction TB\n`; // Top to Bottom
+          mermaidDef += nsDef;
+          mermaidDef += `  end\n`;
+        } else {
+          mermaidDef += nsDef; // Globalはそのまま
+        }
+      }
     }
 
-    const classBlocks = extractClassBlocks(cleanSource);
+    // --- メソッド・プロパティ・リレーションの解析 ---
+    allClassBlocks.forEach(item => {
+      // 継承関係の出力
+      if (item.type === 'inheritance') {
+         // 親クラスがprocessedClassesにある場合のみ描画（ノイズ防止）
+         if (processedClasses.has(item.parent)) {
+            mermaidDef += `  ${item.parent} <|-- ${item.child}\n`;
+         }
+         return;
+      }
 
-    classBlocks.forEach(block => {
-      const owner = block.className;
-      if (!classes.has(owner)) return;
+      // クラス定義処理
+      const owner = item.className;
+      const body = item.body;
 
       // プロパティ
       const propRegex = /public\s+(?:static\s+)?(?:readonly\s+)?([\w<>, \?\[\]]+)\s+(\w+)\s*(?:\{|=>)/g;
       let pMatch;
-      while ((pMatch = propRegex.exec(block.body)) !== null) {
+      while ((pMatch = propRegex.exec(body)) !== null) {
         if (pMatch[1].includes("class ")) continue; 
         mermaidDef += `  ${owner} : +${formatType(pMatch[1])} ${pMatch[2]}\n`;
       }
 
-      // メソッド解析 & 依存マップ構築
+      // メソッド & リレーション
       const methodRegex = /public\s+(?:static\s+)?([\w<>, \?\[\]]+)\s+(\w+)\s*\(([^)]*)\)/g;
       let mMatch;
-      
-      // Arrow TypeごとのラベルSetを管理
-      // solid: --> (new, return)
-      // dashed: ..> (use, static)
-      const relations = new Map(); // Key: TargetClass, Value: { solid: Set, dashed: Set }
+      const relations = new Map(); // Target -> { solid: Set, dashed: Set }
 
-      while ((mMatch = methodRegex.exec(block.body)) !== null) {
+      while ((mMatch = methodRegex.exec(body)) !== null) {
         const [_, retRaw, mName, argsRaw] = mMatch;
         const dRet = formatType(retRaw);
         const dArgs = formatArgs(argsRaw);
         
         mermaidDef += `  ${owner} : +${mName}(${dArgs}) ${dRet}\n`;
 
-        // 戻り値 -> Solid
+        // 戻り値
         const rawRetClass = retRaw.split('<')[0].trim().replace('[]','');
-        if (classes.has(rawRetClass) && rawRetClass !== owner) {
-           addRel(relations, rawRetClass, 'solid', mName); // メソッド名をラベルにする
+        if (processedClasses.has(rawRetClass) && rawRetClass !== owner) {
+           addRel(relations, rawRetClass, 'solid', mName);
         }
 
-        // 内部解析
+        // 内部コード解析
         const endIdx = mMatch.index + mMatch[0].length;
-        const body = extractBlock(block.body, endIdx);
+        const mBody = extractBlock(body, endIdx); // extractBlockは汎用なのでここでも使える
         
-        if (body) {
-           classes.forEach(target => {
+        if (mBody) {
+           processedClasses.forEach(target => {
              if (target === owner) return;
              
-             // new -> Solid (prefix: new)
-             if (new RegExp(`new\\s+${target}\\s*\\(`).test(body)) {
+             if (new RegExp(`new\\s+${target}\\s*\\(`).test(mBody)) {
                addRel(relations, target, 'solid', `new ${mName}`);
-               // 重複回避: newがあるなら単なる戻り値としての表示は消す
+               // newがあるなら単なるreturnとしての表示は消す
                removeRel(relations, target, 'solid', mName);
              }
-             // Static call -> Dashed (prefix: call)
-             else if (new RegExp(`\\b${target}\\s*\\.\\w+`).test(body)) {
+             else if (new RegExp(`\\b${target}\\s*\\.\\w+`).test(mBody)) {
                addRel(relations, target, 'dashed', `call ${mName}`);
              }
-             // Use -> Dashed
-             else if (new RegExp(`\\b${target}\\b`).test(body)) {
+             else if (new RegExp(`\\b${target}\\b`).test(mBody)) {
                addRel(relations, target, 'dashed', mName);
              }
            });
@@ -192,20 +302,15 @@
 
       // 描画
       relations.forEach((types, target) => {
-        // 実線 (-->) : new, return
         if (types.solid.size > 0) {
           mermaidDef += `  ${owner} --> ${target} : ${Array.from(types.solid).join(', ')}\n`;
         }
         
-        // 点線 (..>) : use, static
-        // 実線で既に言及されているメソッドが点線に含まれる場合は削除する（重複整理）
+        // 重複除去 (solidにあるものはdashedから消す)
         types.dashed.forEach(label => {
-            // "new Method" と "Method" のような重複をチェック
             const rawLabel = label.replace('call ', '').replace('new ', '');
             let isDuplicated = false;
-            types.solid.forEach(s => {
-                if(s.includes(rawLabel)) isDuplicated = true;
-            });
+            types.solid.forEach(s => { if(s.includes(rawLabel)) isDuplicated = true; });
             if(isDuplicated) types.dashed.delete(label);
         });
 
@@ -216,6 +321,28 @@
     });
 
     await renderMermaid(mermaidDef);
+  }
+
+  // --- Helpers ---
+
+  // { の位置から対応する } の位置を探してインデックスを返す
+  function findBlockEnd(text, openIndex) {
+    let depth = 1;
+    let i = openIndex + 1;
+    while (i < text.length && depth > 0) {
+      if (text[i] === '{') depth++;
+      else if (text[i] === '}') depth--;
+      i++;
+    }
+    return i - 1;
+  }
+
+  // ブロックの中身だけを抽出
+  function extractBlock(text, start) {
+    const openIndex = text.indexOf('{', start);
+    if (openIndex === -1) return null;
+    const endIndex = findBlockEnd(text, openIndex);
+    return text.substring(openIndex + 1, endIndex);
   }
 
   function addRel(map, target, type, label) {
@@ -251,29 +378,6 @@
       } else { result += char; }
     }
     return result;
-  }
-
-  function extractClassBlocks(src) {
-    const blocks = [];
-    const regex = /public\s+(?:static\s+)?class\s+(\w+)/g;
-    let match;
-    while((match = regex.exec(src)) !== null) {
-      const body = extractBlock(src, match.index + match[0].length);
-      if(body) blocks.push({ className: match[1], body });
-    }
-    return blocks;
-  }
-  
-  function extractBlock(text, start) {
-    let open = text.indexOf('{', start);
-    if(open === -1) return null;
-    let d = 1, i = open + 1;
-    while(i < text.length && d > 0) {
-      if(text[i] === '{') d++;
-      else if(text[i] === '}') d--;
-      i++;
-    }
-    return text.substring(open + 1, i - 1);
   }
 
   function removeComments(str) {
