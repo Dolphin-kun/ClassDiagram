@@ -136,7 +136,7 @@
         // 1. New (太線)
         if (types.new.size > 0) {
           const labels = Array.from(types.new).join(', ');
-          mermaidDef += `  ${owner} ==> ${target} : new ${labels}\n`;
+          mermaidDef += `  ${owner} --> ${target} : new ${labels}\n`;
         }
 
         // 2. Static / Use (点線)
