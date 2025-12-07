@@ -3,46 +3,60 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>C# Code Relationship Diagram</title>
-  <!-- Mermaid CDN -->
+  <title>C# → Mermaid クラス図 自動生成</title>
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
-    mermaid.initialize({ startOnLoad: true });
+    mermaid.initialize({ startOnLoad: false });
   </script>
   <style>
-    body {
-      font-family: sans-serif;
-      padding: 20px;
-      background: #fafafa;
-    }
-    h1 {
-      margin-bottom: 1rem;
-    }
-    .diagram-container {
-      background: white;
-      padding: 20px;
-      border-radius: 12px;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.1);
-    }
+    body { font-family: sans-serif; padding: 20px; background: #f5f5f5; }
+    textarea { width: 100%; height: 250px; padding: 10px; font-family: monospace; }
+    #diagram { background: #fff; padding: 20px; border-radius: 12px; margin-top: 20px; }
+    button { padding: 10px 20px; margin-top: 10px; font-size: 1rem; cursor: pointer; }
   </style>
 </head>
 <body>
-  <h1>C# Public API & Class Relationship Visualization</h1>
-  <p>Mermaid によるクラス図可視化（public のみ）。</p>
+  <h1>C# コード → Mermaid クラス図 自動生成</h1>
+  <p>ここに C# のコードを貼り付けてください。public のみ抽出します。</p>
 
-  <div class="diagram-container">
-    <!-- Mermaid diagram -->
-    <pre class="mermaid">
-classDiagram
-    class PhysicsManager {
-        +PhysicsWorld JoinWorld(int worldId, WorldConfig config)
+  <textarea id="codeInput" placeholder="ここにC#コードを貼り付け"></textarea>
+  <button onclick="generateDiagram()">Mermaid 図を生成</button>
+
+  <div id="diagram"></div>
+
+<script>
+function generateDiagram() {
+  const code = document.getElementById('codeInput').value;
+  const classes = [...code.matchAll(/public\s+(?:static\s+)?class\s+(\w+)/g)].map(m => m[1]);
+  const methods = [...code.matchAll(/public\s+([\w<>]+)\s+(\w+)\s*\(([^)]*)\)/g)];
+
+  let mer = "classDiagram\n";
+
+  classes.forEach(c => mer += `  class ${c}\n`);
+
+  methods.forEach(m => {
+    const returnType = m[1];
+    const methodName = m[2];
+    const args = m[3];
+
+    const owner = findOwnerClass(code, m.index);
+    if (owner) mer += `  ${owner} : +${methodName}(${args}) ${returnType}\n`;
+
+    const referenced = returnType.match(/\w+/);
+    if (referenced && classes.includes(referenced[0])) {
+      mer += `  ${owner} --> ${referenced[0]} : returns\n`;
     }
-    class PhysicsWorld
-    class WorldConfig
+  });
 
-    PhysicsManager --> PhysicsWorld : creates/returns
-    PhysicsManager --> WorldConfig : consumes
-    </pre>
-  </div>
+  document.getElementById('diagram').innerHTML = `<pre class='mermaid'>$$mer</pre>`;
+  mermaid.init();
+}
+
+function findOwnerClass(code, index) {
+  const before = code.substring(0, index);
+  const match = [...before.matchAll(/public\s+(?:static\s+)?class\s+(\w+)/g)].pop();
+  return match ? match[1] : null;
+}
+</script>
 </body>
 </html>
