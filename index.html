@@ -3,71 +3,80 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>C# → Mermaid クラス図 自動生成（複数追加対応版）</title>
+  <title>C# → Mermaid クラス図（左右2ペイン）</title>
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
     mermaid.initialize({ startOnLoad: false });
   </script>
   <style>
-    body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
-    textarea { width: 100%; height: 200px; padding: 10px; font-family: monospace; margin-bottom: 10px; }
-    button { padding: 10px 16px; font-size: 1rem; cursor: pointer; margin-right: 10px; }
-    #diagram { background: #fff; padding: 20px; border-radius: 12px; margin-top: 20px; }
+    body { font-family: sans-serif; margin: 0; background: #f0f0f0; }
+    #container { display: flex; height: 100vh; }
+    #leftPane { width: 50%; padding: 20px; box-sizing: border-box; overflow: auto; background: #fafafa; }
+    #rightPane { width: 50%; padding: 20px; box-sizing: border-box; overflow: auto; background: #ffffff; border-left: 2px solid #ccc; }
+    textarea { width: 100%; height: 250px; font-family: monospace; padding: 10px; }
+    button { padding: 10px 16px; margin-right: 6px; font-size: 1rem; cursor: pointer; }
+    pre.mermaid { white-space: pre-wrap; }
     #hiddenCodes { display:none; }
   </style>
 </head>
 <body>
-  <h1>C# → Mermaid クラス図 自動生成（コード追加式）</h1>
-  <p>コードを貼り付け → “解析して追加” でクラス図に反映されます。貼ったコードは非表示領域に保存されます。</p>
+<div id="container">
+  <div id="leftPane">
+    <h2>コード入力</h2>
+    <textarea id="codeInput" placeholder="ここにC#コードを貼り付け"></textarea>
+    <br />
+    <button onclick="processAndAdd()">解析して追加</button>
+    <button onclick="resetDiagram()">リセット</button>
+    <div id="hiddenCodes"></div>
+  </div>
 
-  <textarea id="codeInput" placeholder="ここにC#コードを貼り付け"></textarea>
-  <button onclick="processAndAdd()">解析して追加</button>
-  <button onclick="resetDiagram()">リセット</button>
-
-  <div id="diagram">
+  <div id="rightPane">
+    <h2>生成された Mermaid 図</h2>
     <pre class="mermaid" id="mermaidCode">classDiagram
 </pre>
   </div>
-
-  <div id="hiddenCodes"></div>
+</div>
 
 <script>
 function processAndAdd(){
-  const code = document.getElementById('codeInput').value;
+  var code = document.getElementById('codeInput').value;
   if(!code.trim()) return;
 
-  // 投下コードを保存
   document.getElementById('hiddenCodes').innerText += "\n\n" + code;
 
-  const mermaidPre = document.getElementById('mermaidCode');
-  let mer = mermaidPre.innerText;
+  var mermaidPre = document.getElementById('mermaidCode');
+  var mer = mermaidPre.innerText;
 
-  // public class 取得
-  const classes = [...code.matchAll(/public\s+(?:static\s+)?class\s+(\w+)/g)].map(m => m[1]);
+  var classRegex = /public\\s+(?:static\\s+)?class\\s+(\\w+)/g;
+  var methodRegex = /public\\s+(?:static\\s+)?([\\w<>]+)\\s+(\\w+)\\s*\\(([^)]*)\\)/g;
 
-  // public method 取得
-  const methods = [...code.matchAll(/public\s+(?:static\s+)?([\w<>]+)\s+(\w+)\s*\(([^)]*)\)/g)];
+  var classes = [];
+  var match;
+  while ((match = classRegex.exec(code)) !== null) {
+    classes.push(match[1]);
+  }
 
-  // クラス追加
-  classes.forEach(c => {
-    if(!mer.includes(`class ${c}`)) mer += `  class ${c}\n`;
-  });
-
-  // メソッド & 関連
-  methods.forEach(m => {
-    const returnType = m[1];
-    const methodName = m[2];
-    const args = m[3];
-    const owner = findOwnerClass(code, m.index);
-
-    if(owner) mer += `  ${owner} : +${methodName}(${args}) ${returnType}\n`;
-
-    const referenced = returnType.match(/\w+/);
-
-    if (referenced && classes.includes(referenced[0])) {
-      mer += `  ${owner} --> ${referenced[0]} : returns\n`;
+  classes.forEach(function(c){
+    if(mer.indexOf("class " + c) === -1){
+      mer += "  class " + c + "\n";
     }
   });
+
+  while ((match = methodRegex.exec(code)) !== null) {
+    var returnType = match[1];
+    var methodName = match[2];
+    var args = match[3];
+    var owner = findOwnerClass(code, match.index);
+
+    if(owner){
+      mer += "  " + owner + " : +" + methodName + "(" + args + ") " + returnType + "\n";
+    }
+
+    var ref = returnType.match(/\\w+/);
+    if(ref && classes.indexOf(ref[0]) !== -1){
+      mer += "  " + owner + " --> " + ref[0] + " : returns\n";
+    }
+  }
 
   mermaidPre.innerText = mer;
   mermaid.init();
@@ -81,9 +90,14 @@ function resetDiagram(){
 }
 
 function findOwnerClass(code, index) {
-  const before = code.substring(0, index);
-  const match = [...before.matchAll(/public\s+(?:static\s+)?class\s+(\w+)/g)].pop();
-  return match ? match[1] : null;
+  var before = code.substring(0, index);
+  var regex = /public\\s+(?:static\\s+)?class\\s+(\\w+)/g;
+  var match;
+  var last = null;
+  while ((match = regex.exec(before)) !== null) {
+    last = match[1];
+  }
+  return last;
 }
 </script>
 </body>
