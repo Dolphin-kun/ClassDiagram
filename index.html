@@ -327,40 +327,109 @@
     };
 
     // --- 安定版 PNG 保存 ---
-    window.saveAsPng = function() {
-    const clonedSvg = createCleanSvgClone();
-    if (!clonedSvg) { alert("図がありません"); return; }
+    window.saveAsPng = function () {
+  const container = document.getElementById('diagramContainer');
+  const svgElement = container.querySelector('svg');
+  
+  if (!svgElement) { 
+    alert("図がありません"); 
+    return; 
+  }
+
+  // svg-pan-zoomのviewportを取得
+  const viewport = svgElement.querySelector('g[class*="svg-pan-zoom_viewport"]');
+  
+  if (!viewport) {
+    alert("図の構造が想定と異なります");
+    return;
+  }
+
+  // 新しいSVGを作成（transform無し）
+  const newSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  newSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  
+  // viewportの内容を全てコピー
+  const children = viewport.cloneNode(true);
+  
+  // transformを除去
+  children.removeAttribute('transform');
+  children.removeAttribute('style');
+  children.setAttribute('class', '');
+  
+  newSvg.appendChild(children);
+  
+  // viewBoxから実際のサイズを計算
+  const bbox = viewport.getBBox();
+  const w = bbox.width + bbox.x;
+  const h = bbox.height + bbox.y;
+  
+  newSvg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  newSvg.setAttribute("width", w);
+  newSvg.setAttribute("height", h);
+  
+  // スタイルを追加（Mermaid用）
+  const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+  style.textContent = `
+    .actor { fill: #ECECFF; stroke: #9370DB; }
+    .noteText { fill: black; font-family: Arial; font-size: 14px; }
+    .labelText { fill: black; font-family: Arial; font-size: 14px; }
+    .classTitle { font-weight: bold; font-size: 14px; }
+    rect { fill: white; stroke: black; }
+    line { stroke: black; }
+    path { stroke: black; fill: none; }
+    text { font-family: Arial; font-size: 14px; fill: black; }
+  `;
+  newSvg.insertBefore(style, newSvg.firstChild);
+
+  const serializer = new XMLSerializer();
+  const svgData = serializer.serializeToString(newSvg);
+  
+  console.log("クリーンなSVG:", svgData.substring(0, 500));
+
+  // Data URIとして埋め込み（Blob URLを使わない）
+  const svgBase64 = btoa(unescape(encodeURIComponent(svgData)));
+  const dataUri = `data:image/svg+xml;base64,${svgBase64}`;
+
+  const scale = 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = w * scale;
+  canvas.height = h * scale;
+  const ctx = canvas.getContext("2d");
+
+  const img = new Image();
+  
+  img.onload = function () {
+    console.log("画像読み込み成功:", img.width, img.height);
     
-    const serializer = new XMLSerializer();
-    const svgData = serializer.serializeToString(clonedSvg);
-    const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(svgBlob);
+    // 白背景
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    const img = new Image();
-    img.onload = function() {
-        const canvas = document.createElement('canvas');
-        const scale = 2; 
-        canvas.width = clonedSvg.getAttribute('width') * scale;
-        canvas.height = clonedSvg.getAttribute('height') * scale;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = "white"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.scale(scale, scale);
-        ctx.drawImage(img, 0, 0);
-        
-        try {
-            const pngUrl = canvas.toDataURL("image/png");
-            const a = document.createElement('a');
-            a.href = pngUrl; a.download = "class_diagram.png";
-            document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        } catch (e) {
-            if(confirm("ブラウザのセキュリティ制限によりPNG保存がブロックされました。\n代わりにSVG形式（高画質・編集可能）で保存しますか？")) {
-                window.saveAsSvg();
-            }
-        }
-        URL.revokeObjectURL(url);
-    };
-    img.src = url;
+    // 描画
+    ctx.drawImage(img, 0, 0, w * scale, h * scale);
+    
+    // PNG化（toDataURLを使用）
+    try {
+      const pngUrl = canvas.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = pngUrl;
+      a.download = "class_diagram.png";
+      a.click();
+      console.log("PNG保存成功");
+    } catch (e) {
+      console.error("PNG変換エラー:", e);
+      alert("PNG生成に失敗しました: " + e.message);
+    }
   };
+
+  img.onerror = function(e) {
+    console.error("画像読み込み失敗:", e);
+    alert("画像の読み込みに失敗しました");
+  };
+
+  img.src = dataUri;
+};
+
 
     // --- SVG 保存機能 ---
     window.saveAsSvg = function () {
