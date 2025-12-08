@@ -330,106 +330,133 @@
     window.saveAsPng = function () {
   const container = document.getElementById('diagramContainer');
   const svgElement = container.querySelector('svg');
-  
-  if (!svgElement) { 
-    alert("図がありません"); 
-    return; 
+
+  if (!svgElement) {
+    alert("図がありません");
+    return;
   }
 
-  // svg-pan-zoomのviewportを取得
   const viewport = svgElement.querySelector('g[class*="svg-pan-zoom_viewport"]');
-  
+
   if (!viewport) {
     alert("図の構造が想定と異なります");
     return;
   }
 
-  // 新しいSVGを作成（transform無し）
-  const newSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  newSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  // 元のSVGを複製
+  const clonedSvg = svgElement.cloneNode(true);
   
-  // viewportの内容を全てコピー
-  const children = viewport.cloneNode(true);
+  // 複製したSVG内のviewportを取得
+  const clonedViewport = clonedSvg.querySelector('g[class*="svg-pan-zoom_viewport"]');
   
-  // transformを除去
-  children.removeAttribute('transform');
-  children.removeAttribute('style');
-  children.setAttribute('class', '');
+  // viewportのtransform属性を削除
+  if (clonedViewport) {
+    clonedViewport.removeAttribute('transform');
+    clonedViewport.removeAttribute('style');
+  }
+
+  // コントロールパネルを削除
+  const controls = clonedSvg.querySelectorAll('.svg-pan-zoom-control, [class*="svg-pan-zoom-control"]');
+  controls.forEach(ctrl => ctrl.remove());
+
+  // 実際の内容のBBoxを取得
+  const contentBBox = viewport.getBBox();
   
-  newSvg.appendChild(children);
-  
-  // viewBoxから実際のサイズを計算
-  const bbox = viewport.getBBox();
-  const w = bbox.width + bbox.x;
-  const h = bbox.height + bbox.y;
-  
-  newSvg.setAttribute("viewBox", `0 0 ${w} ${h}`);
-  newSvg.setAttribute("width", w);
-  newSvg.setAttribute("height", h);
-  
-  // スタイルを追加（Mermaid用）
+  const padding = 30;
+  const vX = contentBBox.x - padding;
+  const vY = contentBBox.y - padding;
+  const vW = contentBBox.width + padding * 2;
+  const vH = contentBBox.height + padding * 2;
+
+  // SVGのサイズとviewBoxを設定
+  clonedSvg.setAttribute("viewBox", `${vX} ${vY} ${vW} ${vH}`);
+  clonedSvg.setAttribute("width", vW);
+  clonedSvg.setAttribute("height", vH);
+  clonedSvg.removeAttribute("style");
+
+  // Mermaidスタイルを追加
+  let defs = clonedSvg.querySelector('defs');
+  if (!defs) {
+    defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+    clonedSvg.insertBefore(defs, clonedSvg.firstChild);
+  }
+
   const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
   style.textContent = `
-    .actor { fill: #ECECFF; stroke: #9370DB; }
-    .noteText { fill: black; font-family: Arial; font-size: 14px; }
-    .labelText { fill: black; font-family: Arial; font-size: 14px; }
-    .classTitle { font-weight: bold; font-size: 14px; }
-    rect { fill: white; stroke: black; }
-    line { stroke: black; }
-    path { stroke: black; fill: none; }
-    text { font-family: Arial; font-size: 14px; fill: black; }
+    text {
+      font-family: "trebuchet ms", verdana, arial, sans-serif !important;
+      font-size: 14px;
+      fill: black;
+    }
+    .classTitle {
+      font-weight: bold !important;
+    }
+    rect {
+      fill: white;
+      stroke: black;
+    }
+    line, path {
+      stroke: black;
+    }
   `;
-  newSvg.insertBefore(style, newSvg.firstChild);
+  defs.appendChild(style);
+
+  // 既存のstyleタグもコピー
+  document.querySelectorAll("style").forEach(s => {
+    const clone = s.cloneNode(true);
+    defs.appendChild(clone);
+  });
 
   const serializer = new XMLSerializer();
-  const svgData = serializer.serializeToString(newSvg);
-  
-  console.log("クリーンなSVG:", svgData.substring(0, 500));
+  const svgData = serializer.serializeToString(clonedSvg);
 
-  // Data URIとして埋め込み（Blob URLを使わない）
+  console.log("SVGデータ先頭:", svgData.substring(0, 500));
+  console.log("サイズ:", { x: vX, y: vY, width: vW, height: vH });
+
+  // Base64エンコード
   const svgBase64 = btoa(unescape(encodeURIComponent(svgData)));
   const dataUri = `data:image/svg+xml;base64,${svgBase64}`;
 
   const scale = 2;
   const canvas = document.createElement("canvas");
-  canvas.width = w * scale;
-  canvas.height = h * scale;
+  canvas.width = vW * scale;
+  canvas.height = vH * scale;
   const ctx = canvas.getContext("2d");
 
   const img = new Image();
-  
+
   img.onload = function () {
-    console.log("画像読み込み成功:", img.width, img.height);
+    console.log("画像読み込み成功:", img.width, "x", img.height);
     
     // 白背景
     ctx.fillStyle = "white";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // 描画
-    ctx.drawImage(img, 0, 0, w * scale, h * scale);
-    
-    // PNG化（toDataURLを使用）
+
+    // 画像を描画
+    ctx.drawImage(img, 0, 0, vW * scale, vH * scale);
+
     try {
       const pngUrl = canvas.toDataURL("image/png");
       const a = document.createElement("a");
       a.href = pngUrl;
       a.download = "class_diagram.png";
+      document.body.appendChild(a);
       a.click();
-      console.log("PNG保存成功");
+      document.body.removeChild(a);
+      console.log("PNG保存完了");
     } catch (e) {
       console.error("PNG変換エラー:", e);
       alert("PNG生成に失敗しました: " + e.message);
     }
   };
 
-  img.onerror = function(e) {
+  img.onerror = function (e) {
     console.error("画像読み込み失敗:", e);
-    alert("画像の読み込みに失敗しました");
+    alert("画像の読み込みに失敗しました。コンソールを確認してください。");
   };
 
   img.src = dataUri;
 };
-
 
     // --- SVG 保存機能 ---
     window.saveAsSvg = function () {
@@ -456,6 +483,10 @@
         clonedViewport.setAttribute("transform", "");
         clonedViewport.removeAttribute("style");
       }
+
+      const controls = clonedSvg.querySelector('.svg-pan-zoom-control')
+        || clonedSvg.querySelector('.svg-pan-zoom-controls');
+      if (controls) controls.remove();
 
       // viewBox を図形にフィット
       const padding = 20;
