@@ -325,53 +325,102 @@
       setTimeout(() => { msg.style.display = 'none'; }, 2000);
     };
 
+    // --- 修正版 PNG保存機能 ---
     window.saveAsPng = function () {
       const container = document.getElementById('diagramContainer');
       const originalSvg = container.querySelector('svg');
       if (!originalSvg) { alert("図がありません"); return; }
 
+      // 1. 図形の実体サイズ（バウンディングボックス）を取得
+      // svg-pan-zoomを使っている場合、内部に '.svg-pan-zoom_viewport' というグループができるのでそのサイズを測る
+      const viewport = originalSvg.querySelector('.svg-pan-zoom_viewport');
+      // viewportが見つからなければsvg自体を使う
+      const targetContent = viewport || originalSvg;
+
+      // SVG要素の描画領域サイズを正確に取得
+      const bbox = targetContent.getBBox();
+
+      // 2. SVGをクローン（複製）して加工用にする
       const clonedSvg = originalSvg.cloneNode(true);
-      const viewBox = originalSvg.getAttribute('viewBox').split(' ').map(Number);
-      const width = viewBox[2];
-      const height = viewBox[3];
 
-      clonedSvg.style.width = width + "px";
-      clonedSvg.style.height = height + "px";
-      clonedSvg.style.transform = "none";
-      clonedSvg.removeAttribute('class');
+      // 3. クローン側の属性をリセット（pan-zoomによる移動や変形を解除）
+      clonedSvg.removeAttribute('style');
+      clonedSvg.removeAttribute('transform');
+      clonedSvg.removeAttribute('width');
+      clonedSvg.removeAttribute('height');
 
-      const viewport = clonedSvg.querySelector('.svg-pan-zoom_viewport');
-      if (viewport) {
-        viewport.setAttribute('transform', 'matrix(1,0,0,1,0,0)');
-        viewport.removeAttribute('style');
+      // pan-zoomの内部グループの変形も解除
+      const clonedViewport = clonedSvg.querySelector('.svg-pan-zoom_viewport');
+      if (clonedViewport) {
+        clonedViewport.setAttribute('transform', '');
+        clonedViewport.removeAttribute('style');
       }
 
+      // 4. ViewBoxを図形全体が収まるように再設定
+      // 余白(padding)を少し持たせる
+      const padding = 20;
+      const vX = bbox.x - padding;
+      const vY = bbox.y - padding;
+      const vW = bbox.width + (padding * 2);
+      const vH = bbox.height + (padding * 2);
+      clonedSvg.setAttribute('viewBox', `${vX} ${vY} ${vW} ${vH}`);
+
+      // 表示サイズも合わせる（Canvas描画用）
+      clonedSvg.setAttribute('width', vW);
+      clonedSvg.setAttribute('height', vH);
+
+      // 5. 【重要】スタイルの注入
+      // ページ内のスタイル(Mermaidの色設定など)をSVG内にコピーしないと、画像化したときに色が消える
+      const styles = document.querySelectorAll('style');
+      for (const s of styles) {
+        clonedSvg.prepend(s.cloneNode(true));
+      }
+
+      // 6. SVGをシリアライズして画像化
       const serializer = new XMLSerializer();
       const svgData = serializer.serializeToString(clonedSvg);
       const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
       const url = URL.createObjectURL(svgBlob);
 
       const img = new Image();
+
+      // 画像読み込み完了後にCanvasへ描画
       img.onload = function () {
         const canvas = document.createElement('canvas');
+        // 高解像度化 (2倍)
         const scale = 2;
-        canvas.width = width * scale;
-        canvas.height = height * scale;
+        canvas.width = vW * scale;
+        canvas.height = vH * scale;
+
         const ctx = canvas.getContext('2d');
+        // 背景を白で塗りつぶす（透過PNGだと見づらいため）
         ctx.fillStyle = "white";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.scale(scale, scale);
-        ctx.drawImage(img, 0, 0);
 
-        const pngUrl = canvas.toDataURL("image/png");
-        const a = document.createElement('a');
-        a.href = pngUrl;
-        a.download = "class_diagram.png";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        // 描画
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0, vW, vH);
+
+        try {
+          const pngUrl = canvas.toDataURL("image/png");
+          const a = document.createElement('a');
+          a.href = pngUrl;
+          a.download = "class_diagram.png";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        } catch (e) {
+          console.error(e);
+          alert("保存に失敗しました。\nローカルファイル(file://)で開いている場合、ブラウザのセキュリティ制限で保存できないことがあります。\n(Chromeの場合は '--allow-file-access-from-files' オプションが必要です)");
+        }
         URL.revokeObjectURL(url);
       };
+
+      img.onerror = function (e) {
+        console.error(e);
+        alert("画像の生成に失敗しました。");
+      };
+
       img.src = url;
     };
 
