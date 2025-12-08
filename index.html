@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>C# Repo → Mermaid Visualizer</title>
-  
+
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
     mermaid.initialize({ startOnLoad: false, maxTextSize: 900000 });
@@ -14,11 +15,13 @@
 
   <style>
     /* --- レイアウトの基本設定 (全画面アプリ化) --- */
-    html, body {
+    html,
+    body {
       height: 100%;
       margin: 0;
       padding: 0;
-      overflow: hidden; /* 画面全体のスクロールを禁止 */
+      overflow: hidden;
+      /* 画面全体のスクロールを禁止 */
       font-family: "Segoe UI", sans-serif;
       background: #f4f6f8;
       color: #333;
@@ -26,74 +29,169 @@
 
     body {
       display: flex;
-      flex-direction: column; /* 縦並びレイアウト */
+      flex-direction: column;
+      /* 縦並びレイアウト */
     }
 
     /* --- 上部操作エリア (固定または内容に応じて伸縮) --- */
     .top-panel {
       padding: 10px 20px;
-      flex-shrink: 0; /* 図形エリアに圧迫されて縮まないようにする */
+      flex-shrink: 0;
+      /* 図形エリアに圧迫されて縮まないようにする */
       background: #f4f6f8;
       border-bottom: 1px solid #ddd;
-      max-height: 40vh; /* 操作パネルが大きくなりすぎないように制限 */
-      overflow-y: auto; /* 操作パネル内だけスクロール可 */
+      max-height: 40vh;
+      /* 操作パネルが大きくなりすぎないように制限 */
+      overflow-y: auto;
+      /* 操作パネル内だけスクロール可 */
     }
 
-    h1 { margin: 0 0 10px 0; font-size: 1.2rem; }
+    h1 {
+      margin: 0 0 10px 0;
+      font-size: 1.2rem;
+    }
 
     .gh-panel {
-      background: #24292e; color: white; padding: 10px; 
-      border-radius: 6px; margin-bottom: 10px; 
+      background: #24292e;
+      color: white;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 10px;
     }
-    .gh-inputs { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 5px;}
-    .gh-input { flex: 1; padding: 6px; border-radius: 4px; border: 1px solid #444; min-width: 150px; }
-    .btn-gh { background: #2ea44f; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
-    .gh-note { font-size: 0.75rem; color: #ccc; }
 
-    textarea { 
-      width: 100%; height: 60px; padding: 5px; 
-      font-family: Consolas, monospace; border-radius: 4px; border: 1px solid #ccc; 
-      resize: vertical; 
-      box-sizing: border-box; /* パディングを含めた幅計算 */
+    .gh-inputs {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+      margin-bottom: 5px;
     }
-    
-    .controls { margin-top: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    
-    button { padding: 6px 12px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; color: white; font-size: 0.9rem;}
-    .btn-add { background: #007bff; }
-    .btn-save { background: #28a745; }
-    .btn-png { background: #6f42c1; }
-    .btn-reset { background: #dc3545; }
 
-    .status-msg { font-size: 0.85rem; font-weight: bold; margin-left: 5px; }
-    .status-success { color: #28a745; } .status-loading { color: #e6a700; } .status-error { color: #dc3545; }
-    
-    .legend { font-size: 0.8rem; margin-left: auto; color: #555; display: flex; gap: 10px; }
+    .gh-input {
+      flex: 1;
+      padding: 6px;
+      border-radius: 4px;
+      border: 1px solid #444;
+      min-width: 150px;
+    }
+
+    .btn-gh {
+      background: #2ea44f;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .gh-note {
+      font-size: 0.75rem;
+      color: #ccc;
+    }
+
+    textarea {
+      width: 100%;
+      height: 60px;
+      padding: 5px;
+      font-family: Consolas, monospace;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      resize: vertical;
+      box-sizing: border-box;
+      /* パディングを含めた幅計算 */
+    }
+
+    .controls {
+      margin-top: 10px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .mermaid {
+      height: 100%;
+    }
+
+    button {
+      padding: 6px 12px;
+      cursor: pointer;
+      border: none;
+      border-radius: 4px;
+      font-weight: bold;
+      color: white;
+      font-size: 0.9rem;
+    }
+
+    .btn-add {
+      background: #007bff;
+    }
+
+    .btn-save {
+      background: #28a745;
+    }
+
+    .btn-png {
+      background: #6f42c1;
+    }
+
+    .btn-reset {
+      background: #dc3545;
+    }
+
+    .status-msg {
+      font-size: 0.85rem;
+      font-weight: bold;
+      margin-left: 5px;
+    }
+
+    .status-success {
+      color: #28a745;
+    }
+
+    .status-loading {
+      color: #e6a700;
+    }
+
+    .status-error {
+      color: #dc3545;
+    }
+
+    .legend {
+      font-size: 0.8rem;
+      margin-left: auto;
+      color: #555;
+      display: flex;
+      gap: 10px;
+    }
 
     /* --- 図形表示エリア (残りの高さを全て使う) --- */
     #diagramWrapper {
-      flex: 1; /* 残りの空間を占有 */
-      min-height: 0; /* Flexアイテムのはみ出し防止に必須 */
-      padding: 10px 20px 20px 20px; /* 余白 */
+      flex: 1;
+      /* 残りの空間を占有 */
+      min-height: 0;
+      /* Flexアイテムのはみ出し防止に必須 */
+      padding: 10px 20px 20px 20px;
+      /* 余白 */
       display: flex;
       flex-direction: column;
     }
 
-    #diagramContainer { 
-      background: #fff; 
-      border-radius: 8px; 
-      box-shadow: 0 4px 10px rgba(0,0,0,0.1); 
+    #diagramContainer {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
       border: 1px solid #ccc;
-      
+
       /* 親(diagramWrapper)の中でいっぱいに広げる */
-      flex: 1; 
+      flex: 1;
       width: 100%;
       height: 100%;
-      
-      overflow: hidden; /* pan-zoomのため */
+
+      overflow: hidden;
+      /* pan-zoomのため */
       position: relative;
     }
-    
+
     /* SVG強制フルサイズ */
     #diagramContainer svg {
       width: 100% !important;
@@ -102,6 +200,7 @@
     }
   </style>
 </head>
+
 <body>
 
   <div class="top-panel">
@@ -117,14 +216,14 @@
     </div>
 
     <textarea id="codeInput" placeholder="// C#コードを手動追加"></textarea>
-    
+
     <div class="controls">
       <button onclick="addCode()" class="btn-add">解析して追加</button>
       <button onclick="saveToStorage()" class="btn-save">💾 保持</button>
       <button onclick="saveAsPng()" class="btn-png">📷 PNG保存</button>
       <button onclick="resetAll()" class="btn-reset">リセット</button>
       <span id="saveStatus" class="status-msg status-success" style="display:none">保存完了</span>
-      
+
       <div class="legend">
         <span><b>ドラッグ:</b> 移動</span>
         <span><b>Ctrl+ホイール:</b> 拡大</span>
@@ -136,126 +235,126 @@
     <div id="diagramContainer"></div>
   </div>
 
-<script type="module">
-  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
 
-  let fullSourceCode = "";
-  let panZoomInstance = null;
+    let fullSourceCode = "";
+    let panZoomInstance = null;
 
-  window.addEventListener('load', async () => {
-    const savedCode = localStorage.getItem('mermaid_csharp_viz');
-    if (savedCode) {
-      fullSourceCode = savedCode;
-      await analyzeAndRender(fullSourceCode);
-    }
-  });
-
-  // --- GitHub Fetch ---
-  window.fetchFromGitHub = async function() {
-    const urlInput = document.getElementById('repoUrl').value.trim();
-    const token = document.getElementById('ghToken').value.trim();
-    const statusEl = document.getElementById('ghStatus');
-
-    if (!urlInput) {
-      statusEl.textContent = "URLを入力してください"; statusEl.className = "status-msg status-error"; return;
-    }
-    const match = urlInput.match(/github\.com\/([^\/]+\/[^\/]+)/);
-    const repoPath = match ? match[1] : urlInput;
-
-    statusEl.textContent = "データ取得中..."; statusEl.className = "status-msg status-loading";
-    const headers = { 'Accept': 'application/vnd.github.v3+json' };
-    if (token) headers['Authorization'] = `token ${token}`;
-
-    try {
-      const repoRes = await fetch(`https://api.github.com/repos/${repoPath}`, { headers });
-      if (!repoRes.ok) throw new Error("Repo not found");
-      const repoData = await repoRes.json();
-      const defaultBranch = repoData.default_branch;
-
-      const treeRes = await fetch(`https://api.github.com/repos/${repoPath}/git/trees/${defaultBranch}?recursive=1`, { headers });
-      const treeData = await treeRes.json();
-      const csFiles = treeData.tree.filter(node => node.path.endsWith('.cs') && node.type === 'blob');
-
-      if (csFiles.length === 0) throw new Error("No .cs files found");
-      if (csFiles.length > 50 && !confirm(`${csFiles.length} files found. Proceed?`)) {
-        statusEl.textContent = "Cancelled"; return;
+    window.addEventListener('load', async () => {
+      const savedCode = localStorage.getItem('mermaid_csharp_viz');
+      if (savedCode) {
+        fullSourceCode = savedCode;
+        await analyzeAndRender(fullSourceCode);
       }
+    });
 
-      statusEl.textContent = `Downloading ${csFiles.length} files...`;
-      let fetchedCount = 0;
-      const fetchPromises = csFiles.map(async file => {
-        let content = "";
-        if (token) {
+    // --- GitHub Fetch ---
+    window.fetchFromGitHub = async function () {
+      const urlInput = document.getElementById('repoUrl').value.trim();
+      const token = document.getElementById('ghToken').value.trim();
+      const statusEl = document.getElementById('ghStatus');
+
+      if (!urlInput) {
+        statusEl.textContent = "URLを入力してください"; statusEl.className = "status-msg status-error"; return;
+      }
+      const match = urlInput.match(/github\.com\/([^\/]+\/[^\/]+)/);
+      const repoPath = match ? match[1] : urlInput;
+
+      statusEl.textContent = "データ取得中..."; statusEl.className = "status-msg status-loading";
+      const headers = { 'Accept': 'application/vnd.github.v3+json' };
+      if (token) headers['Authorization'] = `token ${token}`;
+
+      try {
+        const repoRes = await fetch(`https://api.github.com/repos/${repoPath}`, { headers });
+        if (!repoRes.ok) throw new Error("Repo not found");
+        const repoData = await repoRes.json();
+        const defaultBranch = repoData.default_branch;
+
+        const treeRes = await fetch(`https://api.github.com/repos/${repoPath}/git/trees/${defaultBranch}?recursive=1`, { headers });
+        const treeData = await treeRes.json();
+        const csFiles = treeData.tree.filter(node => node.path.endsWith('.cs') && node.type === 'blob');
+
+        if (csFiles.length === 0) throw new Error("No .cs files found");
+        if (csFiles.length > 50 && !confirm(`${csFiles.length} files found. Proceed?`)) {
+          statusEl.textContent = "Cancelled"; return;
+        }
+
+        statusEl.textContent = `Downloading ${csFiles.length} files...`;
+        let fetchedCount = 0;
+        const fetchPromises = csFiles.map(async file => {
+          let content = "";
+          if (token) {
             const blobRes = await fetch(file.url, { headers });
             const blobData = await blobRes.json();
             content = decodeURIComponent(escape(window.atob(blobData.content.replace(/\s/g, ''))));
-        } else {
+          } else {
             const rawUrl = `https://raw.githubusercontent.com/${repoPath}/${defaultBranch}/${file.path}`;
             const res = await fetch(rawUrl);
             content = await res.text();
-        }
-        fetchedCount++;
-        statusEl.textContent = `Loading: ${fetchedCount}/${csFiles.length}`;
-        return `// File: ${file.path}\n${content}\n`;
-      });
+          }
+          fetchedCount++;
+          statusEl.textContent = `Loading: ${fetchedCount}/${csFiles.length}`;
+          return `// File: ${file.path}\n${content}\n`;
+        });
 
-      const contents = await Promise.all(fetchPromises);
-      fullSourceCode += "\n" + contents.join("\n");
-      statusEl.textContent = "Analyzing...";
+        const contents = await Promise.all(fetchPromises);
+        fullSourceCode += "\n" + contents.join("\n");
+        statusEl.textContent = "Analyzing...";
+        await analyzeAndRender(fullSourceCode);
+        statusEl.textContent = "Done!"; statusEl.className = "status-msg status-success";
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = "Error: " + err.message; statusEl.className = "status-msg status-error";
+      }
+    };
+
+    // --- Buttons ---
+    window.addCode = async function () {
+      const input = document.getElementById('codeInput');
+      if (!input.value.trim()) return;
+      fullSourceCode += "\n" + input.value;
       await analyzeAndRender(fullSourceCode);
-      statusEl.textContent = "Done!"; statusEl.className = "status-msg status-success";
-    } catch (err) {
-      console.error(err);
-      statusEl.textContent = "Error: " + err.message; statusEl.className = "status-msg status-error";
-    }
-  };
+      input.value = "";
+    };
 
-  // --- Buttons ---
-  window.addCode = async function() {
-    const input = document.getElementById('codeInput');
-    if(!input.value.trim()) return;
-    fullSourceCode += "\n" + input.value;
-    await analyzeAndRender(fullSourceCode);
-    input.value = "";
-  };
+    window.saveToStorage = function () {
+      localStorage.setItem('mermaid_csharp_viz', fullSourceCode);
+      const msg = document.getElementById('saveStatus');
+      msg.style.display = 'inline';
+      setTimeout(() => { msg.style.display = 'none'; }, 2000);
+    };
 
-  window.saveToStorage = function() {
-    localStorage.setItem('mermaid_csharp_viz', fullSourceCode);
-    const msg = document.getElementById('saveStatus');
-    msg.style.display = 'inline';
-    setTimeout(() => { msg.style.display = 'none'; }, 2000);
-  };
+    window.saveAsPng = function () {
+      const container = document.getElementById('diagramContainer');
+      const originalSvg = container.querySelector('svg');
+      if (!originalSvg) { alert("図がありません"); return; }
 
-  window.saveAsPng = function() {
-    const container = document.getElementById('diagramContainer');
-    const originalSvg = container.querySelector('svg');
-    if (!originalSvg) { alert("図がありません"); return; }
+      const clonedSvg = originalSvg.cloneNode(true);
+      const viewBox = originalSvg.getAttribute('viewBox').split(' ').map(Number);
+      const width = viewBox[2];
+      const height = viewBox[3];
 
-    const clonedSvg = originalSvg.cloneNode(true);
-    const viewBox = originalSvg.getAttribute('viewBox').split(' ').map(Number);
-    const width = viewBox[2];
-    const height = viewBox[3];
+      clonedSvg.style.width = width + "px";
+      clonedSvg.style.height = height + "px";
+      clonedSvg.style.transform = "none";
+      clonedSvg.removeAttribute('class');
 
-    clonedSvg.style.width = width + "px";
-    clonedSvg.style.height = height + "px";
-    clonedSvg.style.transform = "none";
-    clonedSvg.removeAttribute('class');
-    
-    const viewport = clonedSvg.querySelector('.svg-pan-zoom_viewport');
-    if(viewport) {
+      const viewport = clonedSvg.querySelector('.svg-pan-zoom_viewport');
+      if (viewport) {
         viewport.setAttribute('transform', 'matrix(1,0,0,1,0,0)');
         viewport.removeAttribute('style');
-    }
+      }
 
-    const serializer = new XMLSerializer();
-    const svgData = serializer.serializeToString(clonedSvg);
-    const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(svgBlob);
+      const serializer = new XMLSerializer();
+      const svgData = serializer.serializeToString(clonedSvg);
+      const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(svgBlob);
 
-    const img = new Image();
-    img.onload = function() {
+      const img = new Image();
+      img.onload = function () {
         const canvas = document.createElement('canvas');
-        const scale = 2; 
+        const scale = 2;
         canvas.width = width * scale;
         canvas.height = height * scale;
         const ctx = canvas.getContext('2d');
@@ -263,7 +362,7 @@
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.scale(scale, scale);
         ctx.drawImage(img, 0, 0);
-        
+
         const pngUrl = canvas.toDataURL("image/png");
         const a = document.createElement('a');
         a.href = pngUrl;
@@ -272,178 +371,183 @@
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+      };
+      img.src = url;
     };
-    img.src = url;
-  };
 
-  window.resetAll = async function() {
-    if(!confirm("リセットしますか？")) return;
-    fullSourceCode = "";
-    localStorage.removeItem('mermaid_csharp_viz');
-    document.getElementById('diagramContainer').innerHTML = "";
-    if(panZoomInstance) { panZoomInstance.destroy(); panZoomInstance = null; }
-  };
+    window.resetAll = async function () {
+      if (!confirm("リセットしますか？")) return;
+      fullSourceCode = "";
+      localStorage.removeItem('mermaid_csharp_viz');
+      document.getElementById('diagramContainer').innerHTML = "";
+      if (panZoomInstance) { panZoomInstance.destroy(); panZoomInstance = null; }
+    };
 
-  // --- Logic ---
-  async function analyzeAndRender(source) {
-    const cleanSource = removeComments(source);
-    const classes = new Set();
-    const classDefRegex = /public\s+(?:static\s+)?class\s+(\w+)/g;
-    let match;
-    while ((match = classDefRegex.exec(cleanSource)) !== null) classes.add(match[1]);
+    // --- Logic ---
+    async function analyzeAndRender(source) {
+      const cleanSource = removeComments(source);
+      const classes = new Set();
+      const classDefRegex = /public\s+(?:static\s+)?class\s+(\w+)/g;
+      let match;
+      while ((match = classDefRegex.exec(cleanSource)) !== null) classes.add(match[1]);
 
-    let mermaidDef = "classDiagram\n";
-    mermaidDef += "%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '12px'}}}%%\n";
+      let mermaidDef = "classDiagram\n";
+      mermaidDef += "%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '12px'}}}%%\n";
 
-    classes.forEach(cls => {
-      mermaidDef += `  class ${cls}\n`;
-      if (cls.match(/Manager|Controller|Service/)) mermaidDef += `  style ${cls} fill:#e3f2fd,stroke:#1565c0,stroke-width:2px\n`;
-      else if (cls.match(/Config|Data|Model|Body|World/)) mermaidDef += `  style ${cls} fill:#fff9c4,stroke:#fbc02d,stroke-width:2px\n`;
-    });
-
-    const inheritanceRegex = /public\s+(?:static\s+)?class\s+(\w+)\s*:\s*([\w, ]+)/g;
-    let iMatch;
-    while ((iMatch = inheritanceRegex.exec(cleanSource)) !== null) {
-      const child = iMatch[1];
-      const parentsRaw = iMatch[2];
-      const parents = parentsRaw.split(',').map(p => p.trim());
-      parents.forEach(parent => {
-        const safeParent = parent.split('<')[0]; 
-        if (classes.has(safeParent)) mermaidDef += `  ${safeParent} <|-- ${child}\n`;
+      classes.forEach(cls => {
+        mermaidDef += `  class ${cls}\n`;
+        if (cls.match(/Manager|Controller|Service/)) mermaidDef += `  style ${cls} fill:#e3f2fd,stroke:#1565c0,stroke-width:2px\n`;
+        else if (cls.match(/Config|Data|Model|Body|World/)) mermaidDef += `  style ${cls} fill:#fff9c4,stroke:#fbc02d,stroke-width:2px\n`;
       });
-    }
 
-    const classBlocks = extractClassBlocks(cleanSource);
-    classBlocks.forEach(block => {
-      const owner = block.className;
-      if (!classes.has(owner)) return;
-
-      const propRegex = /public\s+(?:static\s+)?(?:readonly\s+)?([\w<>, \?\[\]]+)\s+(\w+)\s*(?:\{|=>)/g;
-      let pMatch;
-      while ((pMatch = propRegex.exec(block.body)) !== null) {
-        if (pMatch[1].includes("class ")) continue; 
-        mermaidDef += `  ${owner} : +${formatType(pMatch[1])} ${pMatch[2]}\n`;
+      const inheritanceRegex = /public\s+(?:static\s+)?class\s+(\w+)\s*:\s*([\w, ]+)/g;
+      let iMatch;
+      while ((iMatch = inheritanceRegex.exec(cleanSource)) !== null) {
+        const child = iMatch[1];
+        const parentsRaw = iMatch[2];
+        const parents = parentsRaw.split(',').map(p => p.trim());
+        parents.forEach(parent => {
+          const safeParent = parent.split('<')[0];
+          if (classes.has(safeParent)) mermaidDef += `  ${safeParent} <|-- ${child}\n`;
+        });
       }
 
-      const methodRegex = /public\s+(?:static\s+)?([\w<>, \?\[\]]+)\s+(\w+)\s*\(([^)]*)\)/g;
-      let mMatch;
-      const relations = new Map();
+      const classBlocks = extractClassBlocks(cleanSource);
+      classBlocks.forEach(block => {
+        const owner = block.className;
+        if (!classes.has(owner)) return;
 
-      while ((mMatch = methodRegex.exec(block.body)) !== null) {
-        const [_, retRaw, mName, argsRaw] = mMatch;
-        const dRet = formatType(retRaw);
-        const dArgs = formatArgs(argsRaw);
-        mermaidDef += `  ${owner} : +${mName}(${dArgs}) ${dRet}\n`;
-
-        const rawRetClass = retRaw.split('<')[0].trim().replace('[]','');
-        if (classes.has(rawRetClass) && rawRetClass !== owner) addRel(relations, rawRetClass, 'solid', mName);
-
-        const endIdx = mMatch.index + mMatch[0].length;
-        const body = extractBlock(block.body, endIdx);
-        if (body) {
-           classes.forEach(target => {
-             if (target === owner) return;
-             if (new RegExp(`new\\s+${target}\\s*\\(`).test(body)) {
-               addRel(relations, target, 'solid', `new ${mName}`);
-               removeRel(relations, target, 'solid', mName);
-             } else if (new RegExp(`\\b${target}\\s*\\.\\w+`).test(body)) {
-               addRel(relations, target, 'dashed', `call ${mName}`);
-             } else if (new RegExp(`\\b${target}\\b`).test(body)) {
-               addRel(relations, target, 'dashed', mName);
-             }
-           });
+        const propRegex = /public\s+(?:static\s+)?(?:readonly\s+)?([\w<>, \?\[\]]+)\s+(\w+)\s*(?:\{|=>)/g;
+        let pMatch;
+        while ((pMatch = propRegex.exec(block.body)) !== null) {
+          if (pMatch[1].includes("class ")) continue;
+          mermaidDef += `  ${owner} : +${formatType(pMatch[1])} ${pMatch[2]}\n`;
         }
-      }
 
-      relations.forEach((types, target) => {
-        if (types.solid.size > 0) mermaidDef += `  ${owner} --> ${target} : ${Array.from(types.solid).join(', ')}\n`;
-        types.dashed.forEach(label => {
+        const methodRegex = /public\s+(?:static\s+)?([\w<>, \?\[\]]+)\s+(\w+)\s*\(([^)]*)\)/g;
+        let mMatch;
+        const relations = new Map();
+
+        while ((mMatch = methodRegex.exec(block.body)) !== null) {
+          const [_, retRaw, mName, argsRaw] = mMatch;
+          const dRet = formatType(retRaw);
+          const dArgs = formatArgs(argsRaw);
+          mermaidDef += `  ${owner} : +${mName}(${dArgs}) ${dRet}\n`;
+
+          const rawRetClass = retRaw.split('<')[0].trim().replace('[]', '');
+          if (classes.has(rawRetClass) && rawRetClass !== owner) addRel(relations, rawRetClass, 'solid', mName);
+
+          const endIdx = mMatch.index + mMatch[0].length;
+          const body = extractBlock(block.body, endIdx);
+          if (body) {
+            classes.forEach(target => {
+              if (target === owner) return;
+              if (new RegExp(`new\\s+${target}\\s*\\(`).test(body)) {
+                addRel(relations, target, 'solid', `new ${mName}`);
+                removeRel(relations, target, 'solid', mName);
+              } else if (new RegExp(`\\b${target}\\s*\\.\\w+`).test(body)) {
+                addRel(relations, target, 'dashed', `call ${mName}`);
+              } else if (new RegExp(`\\b${target}\\b`).test(body)) {
+                addRel(relations, target, 'dashed', mName);
+              }
+            });
+          }
+        }
+
+        relations.forEach((types, target) => {
+          if (types.solid.size > 0) mermaidDef += `  ${owner} --> ${target} : ${Array.from(types.solid).join(', ')}\n`;
+          types.dashed.forEach(label => {
             const rawLabel = label.replace('call ', '').replace('new ', '');
             let isDuplicated = false;
-            types.solid.forEach(s => { if(s.includes(rawLabel)) isDuplicated = true; });
-            if(isDuplicated) types.dashed.delete(label);
+            types.solid.forEach(s => { if (s.includes(rawLabel)) isDuplicated = true; });
+            if (isDuplicated) types.dashed.delete(label);
+          });
+          if (types.dashed.size > 0) mermaidDef += `  ${owner} ..> ${target} : ${Array.from(types.dashed).join(', ')}\n`;
         });
-        if (types.dashed.size > 0) mermaidDef += `  ${owner} ..> ${target} : ${Array.from(types.dashed).join(', ')}\n`;
       });
-    });
 
-    await renderMermaid(mermaidDef);
-  }
+      await renderMermaid(mermaidDef);
+    }
 
-  // Utils
-  function addRel(map, target, type, label) {
-    if (!map.has(target)) map.set(target, { solid: new Set(), dashed: new Set() });
-    map.get(target)[type].add(label);
-  }
-  function removeRel(map, target, type, label) {
-    if (map.has(target)) map.get(target)[type].delete(label);
-  }
-  function formatType(raw) {
-    if (!raw) return "";
-    let safe = raw.trim().replace(/\b(readonly|volatile|virtual|override)\b/g, '').trim();
-    return escapeGenerics(safe);
-  }
-  function formatArgs(raw) {
-    if (!raw) return "";
-    return escapeGenerics(raw, true);
-  }
-  function escapeGenerics(str, isArgList = false) {
-    let result = ""; let depth = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str[i];
-      if (char === '<') { depth++; result += '~'; }
-      else if (char === '>') { depth--; result += '~'; }
-      else if (char === ',') { if (depth > 0) result += '，'; else result += isArgList ? ' ' : ' '; } 
-      else { result += char; }
+    // Utils
+    function addRel(map, target, type, label) {
+      if (!map.has(target)) map.set(target, { solid: new Set(), dashed: new Set() });
+      map.get(target)[type].add(label);
     }
-    return result;
-  }
-  function extractClassBlocks(src) {
-    const blocks = [];
-    const regex = /public\s+(?:static\s+)?class\s+(\w+)/g;
-    let match;
-    while((match = regex.exec(src)) !== null) {
-      const body = extractBlock(src, match.index + match[0].length);
-      if(body) blocks.push({ className: match[1], body });
+    function removeRel(map, target, type, label) {
+      if (map.has(target)) map.get(target)[type].delete(label);
     }
-    return blocks;
-  }
-  function extractBlock(text, start) {
-    let open = text.indexOf('{', start);
-    if(open === -1) return null;
-    let d = 1, i = open + 1;
-    while(i < text.length && d > 0) {
-      if(text[i] === '{') d++; else if(text[i] === '}') d--;
-      i++;
+    function formatType(raw) {
+      if (!raw) return "";
+      // 改行(\n)やタブ、連続する空白を「1つの半角スペース」に置換して1行にする
+      let safe = raw.replace(/\s+/g, ' ').trim();
+      safe = safe.replace(/\b(readonly|volatile|virtual|override)\b/g, '').trim();
+      return escapeGenerics(safe);
     }
-    return text.substring(open + 1, i - 1);
-  }
-  function removeComments(str) {
-    return str.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1');
-  }
+    function formatArgs(raw) {
+      if (!raw) return "";
+      // 引数リストの中にある改行をスペースに置換して1行にする
+      const oneline = raw.replace(/\s+/g, ' ').trim();
+      return escapeGenerics(oneline, true);
+    }
+    function escapeGenerics(str, isArgList = false) {
+      let result = ""; let depth = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str[i];
+        if (char === '<') { depth++; result += '~'; }
+        else if (char === '>') { depth--; result += '~'; }
+        else if (char === ',') { if (depth > 0) result += '，'; else result += isArgList ? ' ' : ' '; }
+        else { result += char; }
+      }
+      return result;
+    }
+    function extractClassBlocks(src) {
+      const blocks = [];
+      const regex = /public\s+(?:static\s+)?class\s+(\w+)/g;
+      let match;
+      while ((match = regex.exec(src)) !== null) {
+        const body = extractBlock(src, match.index + match[0].length);
+        if (body) blocks.push({ className: match[1], body });
+      }
+      return blocks;
+    }
+    function extractBlock(text, start) {
+      let open = text.indexOf('{', start);
+      if (open === -1) return null;
+      let d = 1, i = open + 1;
+      while (i < text.length && d > 0) {
+        if (text[i] === '{') d++; else if (text[i] === '}') d--;
+        i++;
+      }
+      return text.substring(open + 1, i - 1);
+    }
+    function removeComments(str) {
+      return str.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1');
+    }
 
-  async function renderMermaid(def) {
-    const container = document.getElementById('diagramContainer');
-    if (panZoomInstance) { panZoomInstance.destroy(); panZoomInstance = null; }
-    container.innerHTML = `<pre class="mermaid" id="mermaidTarget">${def}</pre>`;
-    try { 
-        await mermaid.run({ nodes: [document.querySelector('#mermaidTarget')] }); 
+    async function renderMermaid(def) {
+      const container = document.getElementById('diagramContainer');
+      if (panZoomInstance) { panZoomInstance.destroy(); panZoomInstance = null; }
+      container.innerHTML = `<pre class="mermaid" id="mermaidTarget">${def}</pre>`;
+      try {
+        await mermaid.run({ nodes: [document.querySelector('#mermaidTarget')] });
         const svgElement = container.querySelector('svg');
-        if(svgElement) {
-            svgElement.style.maxWidth = "none";
-            svgElement.setAttribute("width", "100%");
-            svgElement.setAttribute("height", "100%");
-            
-            panZoomInstance = svgPanZoom(svgElement, {
-                zoomEnabled: true, controlIconsEnabled: true, fit: true, center: true, minZoom: 0.1, maxZoom: 10,
-                beforeWheel: function(e) { return e.ctrlKey; }
-            });
+        if (svgElement) {
+          svgElement.style.maxWidth = "none";
+          svgElement.setAttribute("width", "100%");
+          svgElement.setAttribute("height", "100%");
+
+          panZoomInstance = svgPanZoom(svgElement, {
+            zoomEnabled: true, controlIconsEnabled: true, fit: true, center: true, minZoom: 0.1, maxZoom: 10,
+            beforeWheel: function (e) { return e.ctrlKey; }
+          });
         }
-    } catch(e) { 
-      console.error(e);
-      container.innerHTML = `<p style="color:red">Syntax Error</p><textarea style="width:100%;height:300px;">${def}</textarea>`;
+      } catch (e) {
+        console.error(e);
+        container.innerHTML = `<p style="color:red">Syntax Error</p><textarea style="width:100%;height:300px;">${def}</textarea>`;
+      }
     }
-  }
-</script>
+  </script>
 </body>
+
 </html>
